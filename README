@@ -1,0 +1,102 @@
+scan-s2 -- channels scanning tool for the Linux DVB S2 API
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+scan-s2 requires Linux DVB driver API version 5.0.
+The scan-s2 utility was tested with Igor M. Liplianin (liplianin@me.by) DVB S2 API driver changeset 149a5c57c1e2
+that can be obtained from: 
+http://mercurial.intuxication.org/hg/s2-liplianin
+The sources could be obtained by running:
+hg clone http://mercurial.intuxication.org/hg/s2-liplianin
+
+The driver directory was symbolically linked to "s2" directory. If you have the driver in other directory, 
+you'll have to change the following line in Makefile to point to the right place:
+INCLUDE=-I../s2/linux/include
+
+
+If compiler can't find DVB headers in ../s2/linux/include/linux/dvb,
+then it looks at usual location /usr/include/linux/dvb.
+
+Install as follows:
+	make
+	make install
+Uninstall
+	make uninstall
+
+The scan-s2 utilty can be used to scan channels on currently locked (by szap-s2 utility) channel or
+by specifying frequencies list that will be scanned one after another.
+szap-s2 utility can be found at:
+http://mercurial.intuxication.org/hg/szap-s2
+
+Samples of frequencies files can be found in dvb-s, dvb-t, dvb-c and atsc subdirectories. 
+Those files are just samples and defenitelly do not include all frequencies you would like to scan.
+
+NOTE:
+Current version was tested with DVB-S/DVB-S2 standard and VDR output only with limited number of options.
+Diseqc implementataion tested with 8-to-1 Centurion switch.
+
+usage:
+	./scan-s2 [options...] [-c | initial-tuning-data-file]
+        -c      scan on currently tuned transponder only
+        -v      verbose (repeat for more)
+        -q      quiet (repeat for less)
+        -a N    use DVB /dev/dvb/adapterN/
+        -f N    use DVB /dev/dvb/adapter?/frontendN
+        -d N    use DVB /dev/dvb/adapter?/demuxN
+        -s N    use DiSEqC switch position N (DVB-S only)
+        -S N    use DiSEqC uncommitted switch position N (DVB-S only)
+        -i N    spectral inversion setting (0: off, 1: on, 2: auto [default])
+        -n      evaluate NIT-other for full network scan (slow!)
+        -5      multiply all filter timeouts by factor 5
+                for non-DVB-compliant section repitition rates
+        -O pos  Orbital position override 'S4W', 'S19.2E' - good for VDR output
+        -k cnt  Skip count, will skip every first specified messages for every message type (default 0)
+        -I cnt  Scan iterations count (default 10). Larger number will make scan longer on every channel
+        -o fmt  output format: 'vdr' (default) or 'zap'
+        -x N    Conditional Access, (default -1)
+                N=-1  gets all channels (FTA and encrypted), output CA is set to :0:
+                N=0   gets only FTA channels
+                N=xxx sets ca field in vdr output to :xxx:
+        -t N    Service select, Combined bitfield parameter.
+                1 = TV, 2 = Radio, 4 = Other, (default 7)
+        -p      for vdr output format: dump provider name
+        -l lnb-type (DVB-S Only) (use -l help to print types) or 
+        -l low[,high[,switch]] in Mhz
+        -u      UK DVB-T Freeview channel numbering for VDR
+
+        -P do not use ATSC PSIP tables for scanning
+            (but only PAT and PMT) (applies for ATSC only)
+        -A N    check for ATSC 1=Terrestrial [default], 2=Cable or 3=both
+        -U      Uniquely name unknown services
+
+
+Example of command line:
+scan-s2 -5 -o vdr -x 0 -s 2 -S 0 -v -U -O S19.2E dvb-s/Astra-19.2E > channels.conf
+
+In case you experience random missing channels after several scans of the same frequency,
+try adding "-k 3" to command line. Some drivers have a buffer and will dump messages from previously
+locked channel that have to be ignored.
+
+When sattelite system is used, every frequency will be scanned for DVB-S2 delivery system when DVB-S system
+has no results.
+
+For VDR output format type "man 5 vdr"
+
+Special thanks to:
+ - Igor M. Liplianin for S2API driver and szap-s2 utility that was used as a reference for scan-s2 utility.
+ - Unknown person that posted patch for scan utility that allows sending uncommited diseqc commands.
+
+
+Enjoy,
+Alex Betis <alex.betis@gmail.com>

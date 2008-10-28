@@ -65,6 +65,7 @@ usage:
         -I cnt  Scan iterations count (default 10). Larger number will make scan longer on every channel
         -o fmt  output format: 'vdr' (default) or 'zap'
         -x N    Conditional Access, (default -1)
+				N=-2  gets all channels (FTA and encrypted), output received CAID :CAID:\n"
                 N=-1  gets all channels (FTA and encrypted), output CA is set to :0:
                 N=0   gets only FTA channels
                 N=xxx sets ca field in vdr output to :xxx:

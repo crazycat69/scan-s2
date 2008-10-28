@@ -255,9 +255,17 @@ static void parse_ca_identifier_descriptor (const unsigned char *buf, struct ser
 		len = sizeof(s->ca_id);
 		warning("too many CA system ids\n");
 	}
+
+	s->ca_num = 0;
 	memcpy(s->ca_id, buf, len);
-	for (i = 0; i < len / sizeof(s->ca_id[0]); i++)
-		moreverbose("  CA ID 0x%04x\n", s->ca_id[i]);
+
+	for (i = 0; i < len / sizeof(s->ca_id[0]); i++) {
+		int id = ((s->ca_id[i] & 0x00FF) << 8) + ((s->ca_id[i] & 0xFF00) >> 8);
+		s->ca_id[i] = id;
+		info("  CA ID 0x%04X\n", s->ca_id[i]);
+
+		s->ca_num++;
+	}
 }
 
 
@@ -311,7 +319,7 @@ static void parse_terrestrial_uk_channel_number (const unsigned char *buf, void 
 	for (i = 0; i < n; i++) {
 		service_id = (buf[0]<<8)|(buf[1]&0xff);
 		channel_num = ((buf[2]&0x03)<<8)|(buf[3]&0xff);
-		debug("Service ID 0x%x has channel number %d ", service_id, channel_num);
+		debug("Service ID 0x%X has channel number %d ", service_id, channel_num);
 		list_for_each(p1, &scanned_transponders) {
 			t = list_entry(p1, struct transponder, list);
 			list_for_each(p2, &t->services) {
@@ -553,7 +561,7 @@ static void parse_service_descriptor (const unsigned char *buf, struct service *
 		s->service_name = 0;
 	}
 
-	info("0x%04x 0x%04x: pmt_pid 0x%04x %s -- %s (%s%s)\n",
+	info("0x%04X 0x%04X: pmt_pid 0x%04X %s -- %s (%s%s)\n",
 		s->transport_stream_id,
 		s->service_id,
 		s->pmt_pid,
@@ -565,6 +573,34 @@ static void parse_service_descriptor (const unsigned char *buf, struct service *
 		s->scrambled ? ", scrambled" : "");
 }
 
+static void parse_ca_descriptor (const unsigned char *buf, struct service *s) 
+{
+	unsigned char descriptor_length = buf [1];
+	int CA_system_ID;
+	int found=0;
+	int i;
+
+	buf += 2;
+
+	if (descriptor_length < 4) return;
+
+	CA_system_ID = (buf[0] << 8) | buf[1];
+
+	for (i=0; i<s->ca_num; i++)
+		if (s->ca_id[i] == CA_system_ID)
+			found++;
+
+	if (!found) {
+		if (s->ca_num + 1 >= CA_SYSTEM_ID_MAX)
+			warning("TOO MANY CA SYSTEM IDs.\n");
+		else {
+			info("  CA ID     : PID 0x%04X\n", CA_system_ID);
+			s->ca_id[s->ca_num]=CA_system_ID;
+			s->ca_num++;
+		}
+	} 	
+} 
+
 static int find_descriptor(uint8_t tag, const unsigned char *buf,
 						   int descriptors_loop_len,
 						   const unsigned char **desc, int *desc_len)
@@ -574,7 +610,7 @@ static int find_descriptor(uint8_t tag, const unsigned char *buf,
 		unsigned char descriptor_len = buf[1] + 2;
 
 		if (!descriptor_len) {
-			warning("descriptor_tag == 0x%02x, len is 0\n", descriptor_tag);
+			warning("descriptor_tag == 0x%02X, len is 0\n", descriptor_tag);
 			break;
 		}
 
@@ -600,12 +636,17 @@ static void parse_descriptors(enum table_type t, const unsigned char *buf,
 		unsigned char descriptor_len = buf[1] + 2;
 
 		if (!descriptor_len) {
-			warning("descriptor_tag == 0x%02x, len is 0\n", descriptor_tag);
+			warning("descriptor_tag == 0x%02X, len is 0\n", descriptor_tag);
 			break;
 		}
 
 		switch(descriptor_tag) 
 		{
+		case 0x09:		/* 0x09 ca_descriptor, caid patch 20080106 */
+			if (t == PMT)
+				parse_ca_descriptor (buf, data);	
+			break;
+
 		case 0x0a:
 			if (t == PMT)
 				parse_iso639_language_descriptor (buf, data);
@@ -661,7 +702,7 @@ static void parse_descriptors(enum table_type t, const unsigned char *buf,
 			break;
 
 		default:
-			verbosedebug("skip descriptor 0x%02x\n", descriptor_tag);
+			verbosedebug("skip descriptor 0x%02X\n", descriptor_tag);
 		};
 
 		buf += descriptor_len;
@@ -679,7 +720,7 @@ static void parse_pat(const unsigned char *buf, int section_length,
 		struct service *s;
 		int service_id = (buf[0] << 8) | buf[1];
 
-		info("service_id = 0x%x\n",service_id);
+		info("service_id = 0x%X\n",service_id);
 		if (service_id == 0)
 			goto skip;	/* nit pid entry */
 
@@ -688,7 +729,7 @@ static void parse_pat(const unsigned char *buf, int section_length,
 		if (!s)
 			s = alloc_service(current_tp, service_id);
 		s->pmt_pid = ((buf[2] & 0x1f) << 8) | buf[3];
-		info("pmt_pid = 0x%x\n",s->pmt_pid);
+		info("pmt_pid = 0x%X\n",s->pmt_pid);
 		if (!s->priv && s->pmt_pid) {
 			s->priv = malloc(sizeof(struct section_buf));
 			setup_filter(s->priv, demux_devname,
@@ -714,7 +755,7 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 
 	s = find_service (current_tp, service_id);
 	if (!s) {
-		error("PMT for serivce_id 0x%04x was not in PAT\n", service_id);
+		error("PMT for service_id 0x%04X was not in PAT\n", service_id);
 		return;
 	}
 
@@ -722,8 +763,17 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 
 	program_info_len = ((buf[2] & 0x0f) << 8) | buf[3];
 
-	buf += program_info_len + 4;
-	section_length -= program_info_len + 4;
+	// caid patch 20080106, search PMT program info for CA Ids
+	buf +=4;
+	section_length -= 4;
+
+	while (program_info_len > 0) {
+		int descriptor_length = ((int)buf[1]) + 2;
+		parse_descriptors(PMT, buf, section_length, s);
+		buf += descriptor_length;
+		section_length   -= descriptor_length;
+		program_info_len -= descriptor_length;
+	}
 
 	while (section_length >= 5) {
 		int ES_info_len = ((buf[3] & 0x0f) << 8) | buf[4];
@@ -734,8 +784,7 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 		case 0x01:
 		case 0x02:
 		case 0x1b:
-			moreverbose("  VIDEO     : PID 0x%04x\n", elementary_pid);
-			info("VIDEO:PID 0x%04x\n", elementary_pid);		
+			info("  VIDEO     : PID 0x%04X\n", elementary_pid);
 			if (s->video_pid == 0)
 				s->video_pid = elementary_pid;
 			break;
@@ -743,8 +792,7 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 		case 0x03:
 		case 0x81: /* Audio per ATSC A/53B [2] Annex B */
 		case 0x04:
-			moreverbose("  AUDIO     : PID 0x%04x\n", elementary_pid);
-			info("AUDIO:PID 0x%04x\n", elementary_pid);
+			info("  AUDIO     : PID 0x%04X\n", elementary_pid);
 			if (s->audio_num < AUDIO_CHAN_MAX) {
 				s->audio_pid[s->audio_num] = elementary_pid;
 				parse_descriptors (PMT, buf + 5, ES_info_len, s);
@@ -757,7 +805,7 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 
 		case 0x06:
 			if (find_descriptor(0x56, buf + 5, ES_info_len, NULL, NULL)) {
-				moreverbose("  TELETEXT  : PID 0x%04x\n", elementary_pid);
+				info("  TELETEXT  : PID 0x%04X\n", elementary_pid);
 				s->teletext_pid = elementary_pid;
 				break;
 			}
@@ -767,19 +815,19 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 				* will also be present; so we can be quite confident
 				* that we catch DVB subtitling streams only here, w/o
 				* parsing the descriptor. */
-				moreverbose("  SUBTITLING: PID 0x%04x\n", elementary_pid);
+				info("  SUBTITLING: PID 0x%04X\n", elementary_pid);
 				s->subtitling_pid = elementary_pid;
 				break;
 			}
 			else if (find_descriptor(0x6a, buf + 5, ES_info_len, NULL, NULL)) {
-				moreverbose("  AC3       : PID 0x%04x\n", elementary_pid);
+				info("  AC3       : PID 0x%04X\n", elementary_pid);
 				s->ac3_pid = elementary_pid;
 				break;
 			}
 			/* fall through */
 
 		default:
-			moreverbose("  OTHER     : PID 0x%04x TYPE 0x%02x\n", elementary_pid, buf[0]);
+			info("  OTHER     : PID 0x%04X TYPE 0x%02X\n", elementary_pid, buf[0]);
 		};
 
 		buf += ES_info_len + 5;
@@ -787,7 +835,7 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 	};
 
 	tmp = msg_buf;
-	tmp += sprintf(tmp, "0x%04x (%.4s)", s->audio_pid[0], s->audio_lang[0]);
+	tmp += sprintf(tmp, "0x%04X (%.4s)", s->audio_pid[0], s->audio_lang[0]);
 
 	if (s->audio_num > AUDIO_CHAN_MAX) {
 		warning("more than %i audio channels: %i, truncating to %i\n",
@@ -796,9 +844,9 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 	}
 
 	for (i=1; i<s->audio_num; i++)
-		tmp += sprintf(tmp, ", 0x%04x (%.4s)", s->audio_pid[i], s->audio_lang[i]);
+		tmp += sprintf(tmp, ", 0x%04X (%.4s)", s->audio_pid[i], s->audio_lang[i]);
 
-	debug("0x%04x 0x%04x: %s -- %s, pmt_pid 0x%04x, vpid 0x%04x, apid %s\n",
+	debug("0x%04X 0x%04X: %s -- %s, pmt_pid 0x%04X, vpid 0x%04X, apid %s\n",
 		s->transport_stream_id,
 		s->service_id,
 		s->provider_name, s->service_name,
@@ -812,7 +860,7 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 
 	if (section_length < descriptors_loop_len + 4)
 	{
-		warning("section too short: network_id == 0x%04x, section_length == %i, "
+		warning("section too short: network_id == 0x%04X, section_length == %i, "
 			"descriptors_loop_len == %i\n",
 			network_id, section_length, descriptors_loop_len);
 		return;
@@ -831,19 +879,22 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 
 		if (section_length < descriptors_loop_len + 4)
 		{
-			warning("section too short: transport_stream_id == 0x%04x, "
+			warning("section too short: transport_stream_id == 0x%04X, "
 				"section_length == %i, descriptors_loop_len == %i\n",
 				transport_stream_id, section_length,
 				descriptors_loop_len);
 			break;
 		}
 
-		debug("transport_stream_id 0x%04x\n", transport_stream_id);
+		debug("transport_stream_id 0x%04X\n", transport_stream_id);
 
 		memset(&tn, 0, sizeof(tn));
 		tn.network_id = network_id;
 		tn.original_network_id = (buf[2] << 8) | buf[3];
 		tn.transport_stream_id = transport_stream_id;
+		tn.fec = FEC_AUTO;
+		tn.inversion = spectral_inversion;
+		tn.modulation = QAM_AUTO;
 
 		parse_descriptors (NIT, buf + 6, descriptors_loop_len, &tn);
 
@@ -852,15 +903,19 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 		if(current_tp->delivery_system == SYS_DVBS || current_tp->delivery_system == SYS_DVBS2) {
 			tn.delivery_system = SYS_DVBS;
 		}
-		// Override all unknown parameters to auto and not use descriptor data
-		tn.fec = FEC_AUTO;
-		tn.inversion = spectral_inversion;
-		tn.modulation = QAM_AUTO;
 
 		t = find_transponder(tn.frequency);
 
-		if (!t)
+		if (!t) {
+			// New transponder
 			t = alloc_transponder(tn.frequency);
+		}
+		else {
+			// Transponder already exist and its parameters are not set to AUTO, use the specified parameters
+			if(t->fec != FEC_AUTO) {
+				tn.fec = t->fec;
+			}
+		}
 
 		copy_transponder(t, &tn);
 
@@ -884,7 +939,7 @@ static void parse_sdt (const unsigned char *buf, int section_length,
 
 		if (section_length < descriptors_loop_len || !descriptors_loop_len)
 		{
-			warning("section too short: service_id == 0x%02x, section_length == %i, "
+			warning("section too short: service_id == 0x%02X, section_length == %i, "
 				"descriptors_loop_len == %i\n",
 				service_id, section_length,
 				descriptors_loop_len);
@@ -920,7 +975,7 @@ static void parse_atsc_service_loc_desc(struct service *s,const unsigned char *b
 		{
 		case 0x02: /* video */
 			s->video_pid = e.elementary_PID;
-			moreverbose("  VIDEO     : PID 0x%04x\n", e.elementary_PID);
+			info("  VIDEO     : PID 0x%04X\n", e.elementary_PID);
 			break;
 
 		case 0x81: /* ATSC audio */
@@ -931,11 +986,11 @@ static void parse_atsc_service_loc_desc(struct service *s,const unsigned char *b
 				s->audio_lang[s->audio_num][2] =  e.ISO_639_language_code        & 0xff;
 				s->audio_num++;
 			}
-			moreverbose("  AUDIO     : PID 0x%04x lang: %s\n",e.elementary_PID,s->audio_lang[s->audio_num-1]);
+			info("  AUDIO     : PID 0x%04X lang: %s\n",e.elementary_PID,s->audio_lang[s->audio_num-1]);
 			break;
 
 		default:
-			warning("unhandled stream_type: %x\n",e.stream_type);
+			warning("unhandled stream_type: %X\n",e.stream_type);
 			break;
 		};
 
@@ -1156,7 +1211,7 @@ static int parse_section (struct section_buf *s)
 	buf += 8;			/* past generic table header */
 	section_length -= 5 + 4;	/* header + crc */
 	if (section_length < 0) {
-		warning("truncated section (PID 0x%04x, lenght %d)",
+		warning("truncated section (PID 0x%04X, lenght %d)",
 			s->pid, section_length + 9);
 		return 0;
 	}
@@ -1164,7 +1219,7 @@ static int parse_section (struct section_buf *s)
 	if (!get_bit(s->section_done, section_number)) {
 		set_bit (s->section_done, section_number);
 
-		debug("pid 0x%02x tid 0x%02x table_id_ext 0x%04x, "
+		debug("pid 0x%02X tid 0x%02X table_id_ext 0x%04X, "
 			"%i/%i (version %i)\n",
 			s->pid, table_id, table_id_ext, section_number,
 			last_section_number, section_version_number);
@@ -1179,7 +1234,7 @@ static int parse_section (struct section_buf *s)
 
 		case 0x02:
 			info("parse_pmt......\n");
-			verbose("PMT 0x%04x for service 0x%04x\n", s->pid, table_id_ext);
+			verbose("PMT 0x%04X for service 0x%04X\n", s->pid, table_id_ext);
 			parse_pmt (buf, section_length, table_id_ext);
 			break;
 
@@ -1345,7 +1400,7 @@ static int start_filter (struct section_buf* s)
 	if ((s->fd = open (s->dmx_devname, O_RDWR | O_NONBLOCK)) < 0)
 		goto err0;
 
-	verbosedebug("start filter pid 0x%04x table_id 0x%02x\n", s->pid, s->table_id);
+	verbosedebug("start filter pid 0x%04X table_id 0x%02X\n", s->pid, s->table_id);
 
 	memset(&f, 0, sizeof(f));
 
@@ -1391,7 +1446,7 @@ err0:
 
 static void stop_filter (struct section_buf *s)
 {
-	verbosedebug("stop filter pid 0x%04x\n", s->pid);
+	verbosedebug("stop filter pid 0x%04X\n", s->pid);
 	ioctl (s->fd, DMX_STOP);
 	close (s->fd);
 	s->fd = -1;
@@ -1405,7 +1460,7 @@ static void stop_filter (struct section_buf *s)
 
 static void add_filter (struct section_buf *s)
 {
-	verbosedebug("add filter pid 0x%04x\n", s->pid);
+	verbosedebug("add filter pid 0x%04X\n", s->pid);
 	if (start_filter (s))
 		list_add_tail (&s->list, &waiting_filters);
 }
@@ -1413,7 +1468,7 @@ static void add_filter (struct section_buf *s)
 
 static void remove_filter (struct section_buf *s)
 {
-	verbosedebug("remove filter pid 0x%04x\n", s->pid);
+	verbosedebug("remove filter pid 0x%04X\n", s->pid);
 	stop_filter (s);
 
 	while (!list_empty(&waiting_filters)) {
@@ -1445,9 +1500,9 @@ static void read_filters (void)
 		if (done || time(NULL) > s->start_time + s->timeout) {
 			if (s->run_once) {
 				if (done)
-					verbosedebug("filter done pid 0x%04x\n", s->pid);
+					verbosedebug("filter done pid 0x%04X\n", s->pid);
 				else
-					warning("filter timeout pid 0x%04x\n", s->pid);
+					warning("filter timeout pid 0x%04X\n", s->pid);
 				remove_filter (s);
 			}
 		}
@@ -1555,7 +1610,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			return -1;
 		}
 
-		verbose(">>> tuning status == 0x%02x\n", s);
+		verbose(">>> tuning status == 0x%02X\n", s);
 
 		if (s & FE_HAS_LOCK) {
 			t->last_tuning_failed = 0;
@@ -2137,6 +2192,7 @@ static const char *usage = "\n"
 "	-I cnt	Scan iterations count (default 10). Larger number will make scan longer on every channel\n"
 "	-o fmt	output format: 'vdr' (default) or 'zap'\n"
 "	-x N	Conditional Access, (default -1)\n"
+"		N=-2  gets all channels (FTA and encrypted), output received CAID :CAID:\n"
 "		N=-1  gets all channels (FTA and encrypted), output CA is set to :0:\n"
 "		N=0   gets only FTA channels\n"
 "		N=xxx sets ca field in vdr output to :xxx:\n"

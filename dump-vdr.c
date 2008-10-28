@@ -84,17 +84,18 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				fprintf (f, "S1");
 			}
 
-			switch(t->fec) {
-		case FEC_1_2: fprintf (f, "C12"); break;
-		case FEC_2_3: fprintf (f, "C23"); break;
-		case FEC_3_4: fprintf (f, "C34"); break;
-		case FEC_3_5: fprintf (f, "C35"); break;
-		case FEC_4_5: fprintf (f, "C45"); break;
-		case FEC_5_6: fprintf (f, "C56"); break;
-		case FEC_6_7: fprintf (f, "C67"); break;
-		case FEC_7_8: fprintf (f, "C78"); break;
-		case FEC_8_9: fprintf (f, "C89"); break;
-		case FEC_9_10: fprintf (f, "C910"); break;
+			switch(t->fec) 
+			{
+			case FEC_1_2: fprintf (f, "C12"); break;
+			case FEC_2_3: fprintf (f, "C23"); break;
+			case FEC_3_4: fprintf (f, "C34"); break;
+			case FEC_3_5: fprintf (f, "C35"); break;
+			case FEC_4_5: fprintf (f, "C45"); break;
+			case FEC_5_6: fprintf (f, "C56"); break;
+			case FEC_6_7: fprintf (f, "C67"); break;
+			case FEC_7_8: fprintf (f, "C78"); break;
+			case FEC_8_9: fprintf (f, "C89"); break;
+			case FEC_9_10: fprintf (f, "C910"); break;
 			}
 			fprintf(f, ":");
 
@@ -143,14 +144,14 @@ void vdr_dump_service_parameter_set (FILE *f, service_t *s, transponder_t *t, ch
 {
 	int i;
 
-	if ((s->video_pid || s->audio_pid[0]) && ((ca_select == -1) || (ca_select > 0) || ((ca_select == 0) && (s->scrambled == 0)))) {
+	if ((s->video_pid || s->audio_pid[0]) && ((ca_select == -1) || (ca_select < 0) || (ca_select > 0) || ((ca_select == 0) && (s->scrambled == 0)))) {
 		if ((dump_channum == 1) && (s->channel_num > 0))
 			fprintf(f, ":@%i\n", s->channel_num);
 
 		if (dump_provider == 1) {
 			fprintf (f, "%s - ", s->provider_name);
 		}
-		fprintf (f, "%s:", s->service_name);
+		fprintf (f, "%s;%s:", s->service_name, s->provider_name);
 
 		vdr_dump_dvb_parameters (f, t, orbital_pos_override);
 
@@ -178,9 +179,29 @@ void vdr_dump_service_parameter_set (FILE *f, service_t *s, transponder_t *t, ch
 				fprintf (f, "=%.4s", s->audio_lang[0]);
 		}
 
-		if (ca_select == -1) s->scrambled = 0;
-		fprintf (f, ":%d:%d:%d:%d:%d:0", s->teletext_pid, s->scrambled,
-			s->service_id, t->network_id, s->transport_stream_id);
+		fprintf (f, ":%d:", s->teletext_pid);
+
+		/* 0 = FTA only (filtered by first IF in that function), set to 0; -1 = All, but output 0 */
+		if(ca_select == -1 || ca_select == 0) { 
+			fprintf (f, "0");
+		}
+		/* -2 = All, output real CAID */
+		else if(ca_select == -2) {
+			fprintf (f, "%X", s->ca_id[0]);
+			for (i = 1; i < s->ca_num; i++) {
+				if (s->ca_id[i] == 0) continue;
+				fprintf (f, ",%X", s->ca_id[i]);
+			}
+		}
+		/* Other = override CAID with specified value */
+		else {
+			fprintf (f, "%d", ca_select);
+		}
+
+		fprintf (f, ":%d:%d:%d:0", s->service_id, 
+			(s->transport_stream_id > 0)?t->network_id:0,
+			s->transport_stream_id);
+
 		fprintf (f, "\n");
 	}
 }

@@ -82,6 +82,7 @@ typedef struct transponder {
 	uint32_t frequency;
 	uint32_t symbol_rate;
 	fe_spectral_inversion_t inversion;
+	fe_rolloff_t rolloff;					/* DVB-S */
 	fe_code_rate_t fec;						/* DVB-S, DVB-C */
 	fe_code_rate_t fecHP;					/* DVB-T */
 	fe_code_rate_t fecLP;					/* DVB-T */

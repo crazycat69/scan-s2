@@ -895,6 +895,7 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 		tn.fec = FEC_AUTO;
 		tn.inversion = spectral_inversion;
 		tn.modulation = QAM_AUTO;
+		tn.rolloff = ROLLOFF_AUTO;
 
 		parse_descriptors (NIT, buf + 6, descriptors_loop_len, &tn);
 
@@ -1582,7 +1583,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		{ .cmd = DTV_SYMBOL_RATE,		.u.data = t->symbol_rate },
 		{ .cmd = DTV_INNER_FEC,			.u.data = t->fec },
 		{ .cmd = DTV_INVERSION,			.u.data = t->inversion },
-		{ .cmd = DTV_ROLLOFF,			.u.data = ROLLOFF_AUTO },
+		{ .cmd = DTV_ROLLOFF,			.u.data = t->rolloff },
 		{ .cmd = DTV_PILOT,				.u.data = PILOT_AUTO },
 		{ .cmd = DTV_TUNE },
 	};
@@ -1612,8 +1613,35 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 		verbose(">>> tuning status == 0x%02X\n", s);
 
+		// Tuning succeed
 		if (s & FE_HAS_LOCK) {
 			t->last_tuning_failed = 0;
+
+			struct dtv_property p[] = {
+				{ .cmd = DTV_DELIVERY_SYSTEM },
+				{ .cmd = DTV_MODULATION },
+				{ .cmd = DTV_INNER_FEC },
+				{ .cmd = DTV_INVERSION },
+				{ .cmd = DTV_ROLLOFF },
+			};
+
+			struct dtv_properties cmdseq = {
+				.num = 5,
+				.props = p
+			};
+
+			// get the actual parameters from the driver for that channel
+			if ((ioctl(frontend_fd, FE_GET_PROPERTY, &cmdseq)) == -1) {
+				perror("FE_GET_PROPERTY failed");
+				return;
+			}
+
+			t->delivery_system = p[0].u.data;
+			t->modulation = p[1].u.data;
+			t->fec = p[2].u.data;
+			t->inversion = p[3].u.data;
+			t->rolloff = p[4].u.data;
+
 			return 0;
 		}
 	}
@@ -1857,6 +1885,9 @@ static int tune_initial (int frontend_fd, const char *initial)
 		else if (sscanf(buf, "S %u %1[HVLR] %u %4s\n", &f, pol, &sr, fec) == 4) {
 			t = alloc_transponder(f);
 			t->delivery_system = SYS_DVBS;
+			t->modulation = QAM_AUTO;
+			t->rolloff = ROLLOFF_AUTO;
+			t->fec = FEC_AUTO;
 			switch(pol[0]) 
 			{
 			case 'H':

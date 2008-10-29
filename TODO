@@ -1,26 +1,4 @@
-Options for Modulation (MN where N=2  is QPSK if DVB-S and N=2 for QPSK and N=5 for 8PSK)
-const tChannelParameterMap ModulationValues[] = {
- {  16, QAM_16,   "QAM16" },
- {  32, QAM_32,   "QAM32" },
- {  64, QAM_64,   "QAM64" },
- { 128, QAM_128,  "QAM128" },
- { 256, QAM_256,  "QAM256" },
- {   2, QPSK,     "QPSK" },
- {   5, PSK_8,    "8PSK" },
- {   6, APSK_16,  "16APSK" },
- {  10, VSB_8,    "VSB8" },
- {  11, VSB_16,   "VSB16" },
- { 998, QAM_AUTO, "QAMAUTO" },
- { -1 }
- };
- 
- 
-
-ROLLOFF?
-
-
-CAID dump.  http://arvdr-dev.free-x.de:8080/freex-dvb-apps/rev/47e9dbb968fc
-
+Add to freq file rolloff and modulation.
 
 Channel Name encoding to UTF.
 http://arvdr-dev.free-x.de:8080/freex-dvb-apps/rev/55bf7441a602

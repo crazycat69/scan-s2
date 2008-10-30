@@ -899,26 +899,32 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 
 		parse_descriptors (NIT, buf + 6, descriptors_loop_len, &tn);
 
-		tn.delivery_system = current_tp->delivery_system;
-		// For sattelites start with DVB-S, it will switch to DVB-S2 if DVB-S gives no results
-		if(current_tp->delivery_system == SYS_DVBS || current_tp->delivery_system == SYS_DVBS2) {
-			tn.delivery_system = SYS_DVBS;
-		}
-
 		t = find_transponder(tn.frequency);
+		
+		if (t == NULL) {
+			if(get_other_nits) {
+				// New transponder
+				t = alloc_transponder(tn.frequency);
 
-		if (!t) {
-			// New transponder
-			t = alloc_transponder(tn.frequency);
+				// For sattelites start with DVB-S, it will switch to DVB-S2 if DVB-S gives no results
+				if(current_tp->delivery_system == SYS_DVBS || current_tp->delivery_system == SYS_DVBS2) {
+					tn.delivery_system = SYS_DVBS;
+				}
+			}
 		}
 		else {
+			// transponder exist, use its known delivery system
+			tn.delivery_system = t->delivery_system;
+
 			// Transponder already exist and its parameters are not set to AUTO, use the specified parameters
 			if(t->fec != FEC_AUTO) {
 				tn.fec = t->fec;
 			}
 		}
 
-		copy_transponder(t, &tn);
+		if(t != NULL) {
+			copy_transponder(t, &tn);
+		}
 
 		section_length -= descriptors_loop_len + 6;
 		buf += descriptors_loop_len + 6;
@@ -1240,10 +1246,19 @@ static int parse_section (struct section_buf *s)
 			break;
 
 		case 0x41:
-			verbose("////////////////////////////////////////////// NIT other\n");
+			verbose("NIT (other TS)\n");
+			if(get_other_nits) {
+				info("parse_nit other......\n");
+				parse_nit (buf, section_length, table_id_ext);
+			}
+			else {
+				verbose("Ignoring, use -n switch to enable parsing\n");
+			}
+			break;
+
 		case 0x40:
-			info("parse_nit......\n");
-			verbose("NIT (%s TS)\n", table_id == 0x40 ? "actual":"other");
+			info("parse_nit actual......\n");
+			verbose("NIT (actual TS)\n");
 			parse_nit (buf, section_length, table_id_ext);
 			break;
 
@@ -2215,7 +2230,7 @@ static const char *usage = "\n"
 "	-s N	use DiSEqC switch position N (DVB-S only)\n"
 "	-S N    use DiSEqC uncommitted switch position N (DVB-S only)\n"
 "	-i N	spectral inversion setting (0: off, 1: on, 2: auto [default])\n"
-"	-n	evaluate NIT-other for full network scan (slow!)\n"
+"	-n	evaluate NIT messages for full network scan (slow!)\n"
 "	-5	multiply all filter timeouts by factor 5\n"
 "		for non-DVB-compliant section repitition rates\n"
 "	-O pos	Orbital position override 'S4W', 'S19.2E' - good for VDR output\n"

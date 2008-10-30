@@ -57,7 +57,7 @@ usage:
         -s N    use DiSEqC switch position N (DVB-S only)
         -S N    use DiSEqC uncommitted switch position N (DVB-S only)
         -i N    spectral inversion setting (0: off, 1: on, 2: auto [default])
-        -n      evaluate NIT-other for full network scan (slow!)
+		-n		evaluate NIT messages for full network scan (slow!)
         -5      multiply all filter timeouts by factor 5
                 for non-DVB-compliant section repitition rates
         -O pos  Orbital position override 'S4W', 'S19.2E' - good for VDR output

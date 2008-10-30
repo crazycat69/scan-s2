@@ -910,20 +910,12 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 				if(current_tp->delivery_system == SYS_DVBS || current_tp->delivery_system == SYS_DVBS2) {
 					tn.delivery_system = SYS_DVBS;
 				}
+
+				copy_transponder(t, &tn);
 			}
 		}
 		else {
-			// transponder exist, use its known delivery system
-			tn.delivery_system = t->delivery_system;
-
-			// Transponder already exist and its parameters are not set to AUTO, use the specified parameters
-			if(t->fec != FEC_AUTO) {
-				tn.fec = t->fec;
-			}
-		}
-
-		if(t != NULL) {
-			copy_transponder(t, &tn);
+			// Trasponder exist, do not update it. Sometimes NIT updates it with wrong information.
 		}
 
 		section_length -= descriptors_loop_len + 6;
@@ -1797,88 +1789,145 @@ static const char * enum2str(int v, const struct strtab *tab, const char *deflt)
 	return deflt;
 }
 
+struct strtab fectab[] = {
+	{ "NONE", FEC_NONE },
+	{ "1/2",  FEC_1_2 },
+	{ "2/3",  FEC_2_3 },
+	{ "3/4",  FEC_3_4 },
+	{ "4/5",  FEC_4_5 },
+	{ "5/6",  FEC_5_6 },
+	{ "6/7",  FEC_6_7 },
+	{ "7/8",  FEC_7_8 },
+	{ "8/9",  FEC_8_9 },
+	{ "AUTO", FEC_AUTO },
+	{ NULL, 0 }
+};
+
 static enum fe_code_rate str2fec(const char *fec)
 {
-	struct strtab fectab[] = {
-		{ "NONE", FEC_NONE },
-		{ "1/2",  FEC_1_2 },
-		{ "2/3",  FEC_2_3 },
-		{ "3/4",  FEC_3_4 },
-		{ "4/5",  FEC_4_5 },
-		{ "5/6",  FEC_5_6 },
-		{ "6/7",  FEC_6_7 },
-		{ "7/8",  FEC_7_8 },
-		{ "8/9",  FEC_8_9 },
-		{ "AUTO", FEC_AUTO },
-		{ NULL, 0 }
-	};
 	return str2enum(fec, fectab, FEC_AUTO);
 }
 
+static const char* fec2str(enum fe_code_rate fec)
+{
+	return enum2str(fec, fectab, "???");
+}
+
+struct strtab rollofftab[] = {
+	{ "20",  ROLLOFF_20 },
+	{ "25",  ROLLOFF_25 },
+	{ "35",  ROLLOFF_35 },
+	{ "AUTO", ROLLOFF_AUTO },
+	{ NULL, 0 }
+};
+
+static enum fe_rolloff str2rolloff(const char *rolloff)
+{
+	return str2enum(rolloff, rollofftab, ROLLOFF_AUTO);
+}
+
+static const char* rolloff2str(enum fe_rolloff rolloff)
+{
+	return enum2str(rolloff, rollofftab, "???");
+}
+
+struct strtab qamtab[] = {
+	{ "QPSK",   QPSK },
+	{ "QAM16",  QAM_16 },
+	{ "QAM32",  QAM_32 },
+	{ "QAM64",  QAM_64 },
+	{ "QAM128", QAM_128 },
+	{ "QAM256", QAM_256 },
+	{ "AUTO",   QAM_AUTO },
+	{ "8VSB",   VSB_8 },
+	{ "16VSB",  VSB_16 },
+	{ "8PSK",	PSK_8 },
+	{ "16APSK", APSK_16 },
+	{ "AUTO",	QAM_AUTO },
+	{ NULL, 0 }
+};
+
 static enum fe_modulation str2qam(const char *qam)
 {
-	struct strtab qamtab[] = {
-		{ "QPSK",   QPSK },
-		{ "QAM16",  QAM_16 },
-		{ "QAM32",  QAM_32 },
-		{ "QAM64",  QAM_64 },
-		{ "QAM128", QAM_128 },
-		{ "QAM256", QAM_256 },
-		{ "AUTO",   QAM_AUTO },
-		{ "8VSB",   VSB_8 },
-		{ "16VSB",  VSB_16 },
-		{ NULL, 0 }
-	};
 	return str2enum(qam, qamtab, QAM_AUTO);
 }
 
+static const char* qam2str(enum fe_modulation qam)
+{
+	return enum2str(qam, qamtab, "???");
+}
+
+struct strtab bwtab[] = {
+	{ "8MHz", BANDWIDTH_8_MHZ },
+	{ "7MHz", BANDWIDTH_7_MHZ },
+	{ "6MHz", BANDWIDTH_6_MHZ },
+	{ "AUTO", BANDWIDTH_AUTO },
+	{ NULL, 0 }
+};
+
 static enum fe_bandwidth str2bandwidth(const char *bw)
 {
-	struct strtab bwtab[] = {
-		{ "8MHz", BANDWIDTH_8_MHZ },
-		{ "7MHz", BANDWIDTH_7_MHZ },
-		{ "6MHz", BANDWIDTH_6_MHZ },
-		{ "AUTO", BANDWIDTH_AUTO },
-		{ NULL, 0 }
-	};
 	return str2enum(bw, bwtab, BANDWIDTH_AUTO);
 }
 
+static const char* bandwidth2str(enum fe_bandwidth bw)
+{
+	return enum2str(bw, bwtab, "???");
+}
+
+struct strtab modetab[] = {
+	{ "2k",   TRANSMISSION_MODE_2K },
+	{ "8k",   TRANSMISSION_MODE_8K },
+	{ "AUTO", TRANSMISSION_MODE_AUTO },
+	{ NULL, 0 }
+};
+
 static enum fe_transmit_mode str2mode(const char *mode)
 {
-	struct strtab modetab[] = {
-		{ "2k",   TRANSMISSION_MODE_2K },
-		{ "8k",   TRANSMISSION_MODE_8K },
-		{ "AUTO", TRANSMISSION_MODE_AUTO },
-		{ NULL, 0 }
-	};
 	return str2enum(mode, modetab, TRANSMISSION_MODE_AUTO);
 }
 
+static const char* mode2str(enum fe_transmit_mode mode)
+{
+	return enum2str(mode, modetab, "???");
+}
+
+struct strtab guardtab[] = {
+	{ "1/32", GUARD_INTERVAL_1_32 },
+	{ "1/16", GUARD_INTERVAL_1_16 },
+	{ "1/8",  GUARD_INTERVAL_1_8 },
+	{ "1/4",  GUARD_INTERVAL_1_4 },
+	{ "AUTO", GUARD_INTERVAL_AUTO },
+	{ NULL, 0 }
+};
+
 static enum fe_guard_interval str2guard(const char *guard)
 {
-	struct strtab guardtab[] = {
-		{ "1/32", GUARD_INTERVAL_1_32 },
-		{ "1/16", GUARD_INTERVAL_1_16 },
-		{ "1/8",  GUARD_INTERVAL_1_8 },
-		{ "1/4",  GUARD_INTERVAL_1_4 },
-		{ "AUTO", GUARD_INTERVAL_AUTO },
-		{ NULL, 0 }
-	};
 	return str2enum(guard, guardtab, GUARD_INTERVAL_AUTO);
 }
 
+static const char* guard2str(enum fe_guard_interval guard)
+{
+	return enum2str(guard, guardtab, "???");
+}
+
+struct strtab hiertab[] = {
+	{ "NONE", HIERARCHY_NONE },
+	{ "1",    HIERARCHY_1 },
+	{ "2",    HIERARCHY_2 },
+	{ "4",    HIERARCHY_4 },
+	{ "AUTO", HIERARCHY_AUTO },
+	{ NULL, 0 }
+};
+
 static enum fe_hierarchy str2hier(const char *hier)
 {
-	struct strtab hiertab[] = {
-		{ "NONE", HIERARCHY_NONE },
-		{ "1",    HIERARCHY_1 },
-		{ "2",    HIERARCHY_2 },
-		{ "4",    HIERARCHY_4 },
-		{ "AUTO", HIERARCHY_AUTO },
-		{ NULL, 0 }
-	};
 	return str2enum(hier, hiertab, HIERARCHY_AUTO);
+}
+
+static const char* hier2str(enum fe_hierarchy hier)
+{
+	return enum2str(hier, hiertab, "???");
 }
 
 static int tune_initial (int frontend_fd, const char *initial)
@@ -1886,7 +1935,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 	FILE *inif;
 	unsigned int f, sr;
 	char buf[200];
-	char pol[20], fec[20], qam[20], bw[20], fec2[20], mode[20], guard[20], hier[20];
+	char pol[20], fec[20], qam[20], bw[20], fec2[20], mode[20], guard[20], hier[20], rolloff[20];
 	struct transponder *t;
 
 	inif = fopen(initial, "r");
@@ -1895,9 +1944,19 @@ static int tune_initial (int frontend_fd, const char *initial)
 		return -1;
 	}
 	while (fgets(buf, sizeof(buf), inif)) {
+		memset(pol, 0, sizeof(pol));
+		memset(fec, 0, sizeof(fec));
+		memset(qam, 0, sizeof(qam));
+		memset(bw, 0, sizeof(bw));
+		memset(fec2, 0, sizeof(fec2));
+		memset(mode, 0, sizeof(mode));
+		memset(guard, 0, sizeof(guard));
+		memset(hier, 0, sizeof(hier));
+		memset(rolloff, 0, sizeof(rolloff));
+
 		if (buf[0] == '#' || buf[0] == '\n')
 			;
-		else if (sscanf(buf, "S %u %1[HVLR] %u %4s\n", &f, pol, &sr, fec) == 4) {
+		else if (sscanf(buf, "S %u %1[HVLR] %u %4s %4s %6s\n", &f, pol, &sr, fec, rolloff, qam) >= 3) {
 			t = alloc_transponder(f);
 			t->delivery_system = SYS_DVBS;
 			t->modulation = QAM_AUTO;
@@ -1915,56 +1974,112 @@ static int tune_initial (int frontend_fd, const char *initial)
 			}
 			t->inversion = spectral_inversion;
 			t->symbol_rate = sr;
-			t->fec = str2fec(fec);
-			info("initial transponder %u %c %u %d\n",
+
+			// parse optional parameters
+			if(strlen(fec) > 0) {
+				t->fec = str2fec(fec);
+			}
+
+			if(strlen(rolloff) > 0) {
+				t->rolloff = str2rolloff(rolloff);
+			}
+
+			if(strlen(qam) > 0) {
+				t->modulation = str2qam(qam);
+			}
+
+			info("initial transponder %u %c %d %s %s %s\n",
 				t->frequency,
-				pol[0], sr,
-				t->symbol_rate);
+				pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
 		}
-		else if (sscanf(buf, "C %u %u %4s %6s\n", &f, &sr, fec, qam) == 4) {
+		else if (sscanf(buf, "C %u %u %4s %6s\n", &f, &sr, fec, qam) >= 2) {
 			t = alloc_transponder(f);
 			t->delivery_system = SYS_DVBC_ANNEX_AC;
 			t->inversion = spectral_inversion;
 			t->symbol_rate = sr;
-			t->fec = str2fec(fec);
-			t->modulation = str2qam(qam);
-			info("initial transponder %u %u %d %d\n",
+			t->fec = FEC_AUTO;
+			t->modulation = QAM_AUTO;
+
+			// parse optional parameters
+			if(strlen(fec) > 0) {
+				t->fec = str2fec(fec);
+			}
+
+			if(strlen(qam) > 0) {
+				t->modulation = str2qam(qam);
+			}
+
+			info("initial transponder %u %u %s %s\n",
 				t->frequency,
 				sr,
-				t->fec,
-				t->modulation);
+				fec2str(t->fec),
+				qam2str(t->modulation));
 		}
 		else if (sscanf(buf, "T %u %4s %4s %4s %7s %4s %4s %4s\n",
-			&f, bw, fec, fec2, qam, mode, guard, hier) == 8) {
+			&f, bw, fec, fec2, qam, mode, guard, hier) >= 1) {
 				t = alloc_transponder(f);
 				t->delivery_system = SYS_DVBT;
 				t->inversion = spectral_inversion;
-				t->bandwidth = str2bandwidth(bw);
-				t->fecHP = str2fec(fec);
-				if (t->fecHP == FEC_NONE)
-					t->fecHP = FEC_AUTO;
-				t->fecLP = str2fec(fec2);
-				if (t->fecLP == FEC_NONE)
-					t->fecLP = FEC_AUTO;
-				t->modulation = str2qam(qam);
-				t->transmission_mode = str2mode(mode);
-				t->guard_interval = str2guard(guard);
-				t->hierarchy = str2hier(hier);
-				info("initial transponder %u %d %d %d %d %d %d %d\n",
+				t->bandwidth = BANDWIDTH_AUTO;
+				t->fecHP = FEC_AUTO;
+				t->fecLP = FEC_AUTO;
+				t->modulation = QAM_AUTO;
+				t->transmission_mode = TRANSMISSION_MODE_AUTO;
+				t->guard_interval = GUARD_INTERVAL_AUTO;
+				t->hierarchy = HIERARCHY_AUTO;
+
+				// parse optional parameters
+				if(strlen(bw) > 0) {
+					t->bandwidth = str2bandwidth(bw);
+				}
+
+				if(strlen(fec) > 0) {
+					t->fecHP = str2fec(fec);
+					if (t->fecHP == FEC_NONE)
+						t->fecHP = FEC_AUTO;
+				}
+
+				if(strlen(fec2) > 0) {
+					t->fecLP = str2fec(fec2);
+					if (t->fecLP == FEC_NONE)
+						t->fecLP = FEC_AUTO;
+				}
+
+				if(strlen(qam) > 0) {
+					t->modulation = str2qam(qam);
+				}
+
+				if(strlen(mode) > 0) {
+					t->transmission_mode = str2mode(mode);
+				}
+
+				if(strlen(guard) > 0) {
+					t->guard_interval = str2guard(guard);
+				}
+
+				if(strlen(hier) > 0) {
+					t->hierarchy = str2hier(hier);
+				}
+
+				info("initial transponder %u %s %s %s %s %s %s %s\n",
 					t->frequency,
-					t->bandwidth,
-					t->fecHP,
-					t->fecLP,
-					t->modulation,
-					t->transmission_mode,
-					t->guard_interval,
-					t->hierarchy);
+					bandwidth2str(t->bandwidth),
+					fec2str(t->fecHP),
+					fec2str(t->fecLP),
+					qam2str(t->modulation),
+					mode2str(t->transmission_mode),
+					guard2str(t->guard_interval),
+					hier2str(t->hierarchy));
 		}
-		else if (sscanf(buf, "A %u %7s\n",
-			&f,qam) == 2) {
+		else if (sscanf(buf, "A %u %7s\n", &f, qam) >= 1) {
 				t = alloc_transponder(f);
 				t->delivery_system = SYS_ATSC;
-				t->modulation = str2qam(qam);
+				t->modulation = QAM_AUTO;
+
+				// parse optional parameters
+				if(strlen(qam) > 0) {
+					t->modulation = str2qam(qam);
+				}
 		}
 		else
 			error("cannot parse'%s'\n", buf);

@@ -175,7 +175,7 @@ void vdr_dump_service_parameter_set (FILE *f, service_t *s, transponder_t *t, ch
 		if (dump_provider == 1) {
 			fprintf (f, "%s - ", s->provider_name);
 		}
-		fprintf (f, "%s;%s:", s->service_name, s->provider_name);
+		fprintf (f, "%s;%s:", s->service_name, s->provider_name?s->provider_name:"");
 
 		vdr_dump_dvb_parameters (f, t, orbital_pos_override);
 

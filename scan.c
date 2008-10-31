@@ -1310,9 +1310,9 @@ static int read_sections (struct section_buf *s)
 		return -1;
 	}
 
-	s->skip_count--;
 	if(s->skip_count > 0) {
 		info("skipping section, table_id %X, pid %X\n", s->table_id, s->pid);
+		s->skip_count--;
 		return -1;
 	}
 

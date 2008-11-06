@@ -1522,7 +1522,8 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 	int rc;
 	int i;
 	fe_status_t s;
-	uint32_t if_freq;
+	uint32_t if_freq = 0;
+	uint32_t bandwidth_hz = 0;
 	current_tp = t;
 
 	struct dtv_property p_clear[] = {
@@ -1547,7 +1548,10 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		dprintf(1, "\n");
 	}
 
-	if (t->delivery_system == SYS_DVBS || t->delivery_system == SYS_DVBS2) {
+	switch(t->delivery_system) 
+	{
+	case SYS_DVBS:
+	case SYS_DVBS2:
 		if (lnb_type.high_val) {
 			if (lnb_type.switch_val) {
 				/* Voltage-controlled switch */
@@ -1577,10 +1581,29 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			/* Monopoint LNBf without switch */
 			if_freq = abs(t->frequency - lnb_type.low_val);
 		}
-		if (verbosity >= 2)
+		if (verbosity >= 2) {
 			dprintf(1,"DVB-S IF freq is %d\n", if_freq);
-	}
+		}
+		break;
 
+	case SYS_DVBT:
+		if_freq = t->frequency;
+
+		switch(t->bandwidth) 
+		{
+		case BANDWIDTH_6_MHZ:	bandwidth_hz = 6000000; break;
+		case BANDWIDTH_7_MHZ:	bandwidth_hz = 7000000; break;
+		case BANDWIDTH_8_MHZ:	bandwidth_hz = 8000000; break;
+		case BANDWIDTH_AUTO:	bandwidth_hz = 0; break;
+		default:				bandwidth_hz = 0; break;
+		}
+
+		if (verbosity >= 2){
+			dprintf(1,"DVB-T frequency is %d\n", if_freq);
+			dprintf(1,"DVB-T bandwidth is %d\n", bandwidth_hz);
+		}
+		break;
+	}
 
 	struct dvb_frontend_event ev;
 	struct dtv_property p_tune[] = {
@@ -1591,11 +1614,12 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		{ .cmd = DTV_INNER_FEC,			.u.data = t->fec },
 		{ .cmd = DTV_INVERSION,			.u.data = t->inversion },
 		{ .cmd = DTV_ROLLOFF,			.u.data = t->rolloff },
+		{ .cmd = DTV_BANDWIDTH_HZ,		.u.data = bandwidth_hz },
 		{ .cmd = DTV_PILOT,				.u.data = PILOT_AUTO },
 		{ .cmd = DTV_TUNE },
 	};
 	struct dtv_properties cmdseq_tune = {
-		.num = 9,
+		.num = 10,
 		.props = p_tune
 	};
 
@@ -2072,14 +2096,14 @@ static int tune_initial (int frontend_fd, const char *initial)
 					hier2str(t->hierarchy));
 		}
 		else if (sscanf(buf, "A %u %7s\n", &f, qam) >= 1) {
-				t = alloc_transponder(f);
-				t->delivery_system = SYS_ATSC;
-				t->modulation = QAM_AUTO;
+			t = alloc_transponder(f);
+			t->delivery_system = SYS_ATSC;
+			t->modulation = QAM_AUTO;
 
-				// parse optional parameters
-				if(strlen(qam) > 0) {
-					t->modulation = str2qam(qam);
-				}
+			// parse optional parameters
+			if(strlen(qam) > 0) {
+				t->modulation = str2qam(qam);
+			}
 		}
 		else
 			error("cannot parse'%s'\n", buf);

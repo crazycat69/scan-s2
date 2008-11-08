@@ -915,7 +915,10 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 			}
 		}
 		else {
-			// Trasponder exist, do not update it. Sometimes NIT updates it with wrong information.
+			// Trasponder exist, update only currently locked transponder. Sometimes NIT updates it with wrong information.
+			if(current_tp->frequency == tn.frequency) {
+				copy_transponder(t, &tn);
+			}
 		}
 
 		section_length -= descriptors_loop_len + 6;
@@ -1226,37 +1229,27 @@ static int parse_section (struct section_buf *s)
 		switch (table_id) 
 		{
 		case 0x00:
-			info("parse_pat......\n");
 			verbose("PAT\n");
 			parse_pat (buf, section_length, table_id_ext);
 			break;
 
 		case 0x02:
-			info("parse_pmt......\n");
 			verbose("PMT 0x%04X for service 0x%04X\n", s->pid, table_id_ext);
 			parse_pmt (buf, section_length, table_id_ext);
 			break;
 
 		case 0x41:
 			verbose("NIT (other TS)\n");
-			if(get_other_nits) {
-				info("parse_nit other......\n");
-				parse_nit (buf, section_length, table_id_ext);
-			}
-			else {
-				verbose("Ignoring, use -n switch to enable parsing\n");
-			}
+			parse_nit (buf, section_length, table_id_ext);
 			break;
 
 		case 0x40:
-			info("parse_nit actual......\n");
 			verbose("NIT (actual TS)\n");
 			parse_nit (buf, section_length, table_id_ext);
 			break;
 
 		case 0x42:
 		case 0x46:
-			info("parse_sdt......\n");
 			verbose("SDT (%s TS)\n", table_id == 0x42 ? "actual":"other");
 			parse_sdt (buf, section_length, table_id_ext);
 			break;
@@ -1280,7 +1273,6 @@ static int parse_section (struct section_buf *s)
 	}
 
 	if (s->segmented) {
-		info(">>> segmented!\n");
 		/* always wait for timeout; this is because we don't now how
 		* many segments there are
 		*/
@@ -1359,11 +1351,6 @@ static void setup_filter (struct section_buf* s, const char *dmx_devname,
 	}
 	else {
 		s->timeout = timeout;
-	}
-
-	// multiplying timers since we skip first received messages
-	if(s->skip_count > 0) {
-		s->timeout *= 2;
 	}
 
 	s->table_id_ext = tid_ext;

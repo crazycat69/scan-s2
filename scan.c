@@ -915,10 +915,8 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 			}
 		}
 		else {
-			// Trasponder exist, update only currently locked transponder. Sometimes NIT updates it with wrong information.
-			if(current_tp->frequency == tn.frequency) {
-				copy_transponder(t, &tn);
-			}
+			// Trasponder exist, update transponder info.
+			copy_transponder(t, &tn);
 		}
 
 		section_length -= descriptors_loop_len + 6;

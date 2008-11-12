@@ -87,6 +87,8 @@ static int uncommitted_switch_pos = 0;
 static char override_orbital_pos[16] = "";
 static enum format output_format = OUTPUT_VDR;
 static int output_format_set = 0;
+static int disable_s1 = FALSE;
+static int disable_s2 = FALSE;
 
 
 struct section_buf {
@@ -191,6 +193,7 @@ static void copy_transponder(struct transponder *d, struct transponder *s)
 	d->frequency = s->frequency;
 	d->symbol_rate = s->symbol_rate;
 	d->inversion = s->inversion;
+	d->rolloff = s->rolloff;
 	d->fec = s->fec;
 	d->fecHP = s->fecHP;
 	d->fecLP = s->fecLP;
@@ -903,15 +906,20 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 		
 		if (t == NULL) {
 			if(get_other_nits) {
-				// New transponder
+				// New DVB-S transponder
 				t = alloc_transponder(tn.frequency);
 
-				// For sattelites start with DVB-S, it will switch to DVB-S2 if DVB-S gives no results
+				// For sattelites add both DVB-S and DVB-S2 transopnders since we don't know what should be used
 				if(current_tp->delivery_system == SYS_DVBS || current_tp->delivery_system == SYS_DVBS2) {
 					tn.delivery_system = SYS_DVBS;
-				}
+					copy_transponder(t, &tn);
 
-				copy_transponder(t, &tn);
+					tn.delivery_system = SYS_DVBS2;
+					copy_transponder(t, &tn);
+				}
+				else {
+					copy_transponder(t, &tn);
+				}
 			}
 		}
 		else {
@@ -1731,12 +1739,6 @@ retry:
 
 		rc = tune_to_transponder(frontend_fd, t);
 
-		// If scan failed and it's a DVB-S system, try DVB-S2 before giving up
-		if (rc != 0 && t->delivery_system == SYS_DVBS) {
-			t->delivery_system = SYS_DVBS2;
-			rc = tune_to_transponder(frontend_fd, t);
-		}
-
 		if (rc == 0) {
 			return 0;
 		}
@@ -1943,9 +1945,12 @@ static int tune_initial (int frontend_fd, const char *initial)
 {
 	FILE *inif;
 	unsigned int f, sr;
-	char buf[200];
-	char pol[20], fec[20], qam[20], bw[20], fec2[20], mode[20], guard[20], hier[20], rolloff[20];
+	char buf[1024];
+	char pol[20], fec[20], qam[20], bw[20], fec2[20], mode[20], guard[20], hier[20], rolloff[20], scan_mode;
 	struct transponder *t;
+	struct transponder *t2;
+	int scan_mode1 = FALSE;
+	int scan_mode2 = FALSE;
 
 	inif = fopen(initial, "r");
 	if (!inif) {
@@ -1953,6 +1958,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 		return -1;
 	}
 	while (fgets(buf, sizeof(buf), inif)) {
+		scan_mode = 0;
 		memset(pol, 0, sizeof(pol));
 		memset(fec, 0, sizeof(fec));
 		memset(qam, 0, sizeof(qam));
@@ -1965,12 +1971,32 @@ static int tune_initial (int frontend_fd, const char *initial)
 
 		if (buf[0] == '#' || buf[0] == '\n')
 			;
-		else if (sscanf(buf, "S %u %1[HVLR] %u %4s %4s %6s\n", &f, pol, &sr, fec, rolloff, qam) >= 3) {
+		else if (sscanf(buf, "S%c %u %1[HVLR] %u %4s %4s %6s\n", &scan_mode, &f, pol, &sr, fec, rolloff, qam) >= 3) {
 			t = alloc_transponder(f);
 			t->delivery_system = SYS_DVBS;
 			t->modulation = QAM_AUTO;
 			t->rolloff = ROLLOFF_AUTO;
 			t->fec = FEC_AUTO;
+
+			switch(scan_mode)
+			{
+			case '1':
+				/* Enable only DVB-S mode */
+				scan_mode1 = TRUE;
+				break;
+
+			case '2':
+				/* Enable only DVB-S2 mode */
+				scan_mode2 = TRUE;
+				break;
+
+			default:
+				/* Enable both DVB-S and DVB-S2 scan modes */
+				scan_mode1 = TRUE;
+				scan_mode2 = TRUE;
+				break;
+			}
+
 			switch(pol[0]) 
 			{
 			case 'H':
@@ -1997,7 +2023,54 @@ static int tune_initial (int frontend_fd, const char *initial)
 				t->modulation = str2qam(qam);
 			}
 
-			info("initial transponder %u %c %d %s %s %s\n",
+			switch(t->modulation)
+			{
+			case PSK_8:
+				/* DVB-S2 modulation is explicitly specified, scan only in DVB-S2 mode */
+				scan_mode1 = FALSE;
+				scan_mode2 = TRUE;
+				break;
+			}
+
+			/* Apply disable flags */
+			if(disable_s1) {
+				scan_mode1 = FALSE;
+			}
+			if(disable_s2) {
+				scan_mode2 = FALSE;
+			}
+
+			/* Both modes should be scanned */
+			if(scan_mode1 && scan_mode2) {
+				/* Set current transponder to DVB-S delivery */
+				t->delivery_system = SYS_DVBS;
+
+				/* create new transponder for the second mode */
+				t2 = alloc_transponder(f);
+				/* copy all parameters from original transponder */
+				copy_transponder(t2, t);
+				/* set second transponder to DVB-S2 */
+				t2->delivery_system = SYS_DVBS2;
+
+				info("initial transponder DVB-S%s %u %c %d %s %s %s\n",
+					t->delivery_system==SYS_DVBS?" ":"2",
+					t->frequency,
+					pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
+
+				/* change the main pointer so the second added transponder will be printed */
+				t = t2;
+			}
+			else { /* only one system should be used */
+				if(scan_mode1) {
+					t->delivery_system = SYS_DVBS;
+				}
+				else if(scan_mode2) {
+					t->delivery_system = SYS_DVBS2;
+				}
+			}
+
+			info("initial transponder DVB-S%s %u %c %d %s %s %s\n",
+				t->delivery_system==SYS_DVBS?" ":"2",
 				t->frequency,
 				pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
 		}
@@ -2358,27 +2431,35 @@ static const char *usage = "\n"
 "	-5	multiply all filter timeouts by factor 5\n"
 "		for non-DVB-compliant section repitition rates\n"
 "	-O pos	Orbital position override 'S4W', 'S19.2E' - good for VDR output\n"
-"	-k cnt	Skip count, will skip every first specified messages for every message type (default 0)\n"
-"	-I cnt	Scan iterations count (default 10). Larger number will make scan longer on every channel\n"
+"	-k cnt	Skip count, will skip every first specified\n"
+"		messages for every message type (default 0)\n"
+"	-I cnt	Scan iterations count (default 10).\n"
+"		Larger number will make scan longer on every channel\n"
 "	-o fmt	output format: 'vdr' (default) or 'zap'\n"
 "	-x N	Conditional Access, (default -1)\n"
-"		N=-2  gets all channels (FTA and encrypted), output received CAID :CAID:\n"
-"		N=-1  gets all channels (FTA and encrypted), output CA is set to :0:\n"
+"		N=-2  gets all channels (FTA and encrypted),\n"
+"		      output received CAID :CAID:\n"
+"		N=-1  gets all channels (FTA and encrypted),\n"
+"		      output CA is set to :0:\n"
 "		N=0   gets only FTA channels\n"
-"		N=xxx sets ca field in vdr output to :xxx:\n"
-"	-t N	Service select, Combined bitfield parameter.\n"
+"		N=xxx  sets ca field in vdr output to :xxx:\n"
+"	-t N  Service select, Combined bitfield parameter.\n"
 "		1 = TV, 2 = Radio, 4 = Other, (default 7)\n"
 "	-p	for vdr output format: dump provider name\n"
-"	-e N	VDR version, default 2 for VDR-1.2.x\n"
+"	-e N  VDR version, default 2 for VDR-1.2.x\n"
 "		ANYTHING ELSE GIVES NONZERO NIT and TID\n"
 "		Vdr version 1.3.x and up implies -p.\n"
 "	-l lnb-type (DVB-S Only) (use -l help to print types) or \n"
 "	-l low[,high[,switch]] in Mhz\n"
-"	-u      UK DVB-T Freeview channel numbering for VDR\n\n"
+"	-u UK DVB-T Freeview channel numbering for VDR\n\n"
 "	-P do not use ATSC PSIP tables for scanning\n"
 "	    (but only PAT and PMT) (applies for ATSC only)\n"
 "	-A N	check for ATSC 1=Terrestrial [default], 2=Cable or 3=both\n"
-"	-U	Uniquely name unknown services\n";
+"	-U	Uniquely name unknown services\n"
+"	-D s	Disable specified scan mode (by default all modes are enabled)\n"
+"		s=S1  Disable DVB-S scan\n"
+"		s=S2  Disable DVB-S2 scan (good for owners of cards that do not\n"
+"		      support DVB-S2 systems)\n";
 
 void bad_usage(char *pname, int problem)
 {
@@ -2431,7 +2512,7 @@ int main (int argc, char **argv)
 
 	/* start with default lnb type */
 	lnb_type = *lnb_enum(0);
-	while ((opt = getopt(argc, argv, "5cnpa:f:d:O:k:I:S:s:o:x:t:i:l:vquPA:U")) != -1) {
+	while ((opt = getopt(argc, argv, "5cnpa:f:d:O:k:I:S:s:o:D:x:t:i:l:vquPA:U")) != -1) {
 		switch (opt) 
 		{
 		case 'a':
@@ -2483,6 +2564,16 @@ int main (int argc, char **argv)
 		case 'o':
 			if      (strcmp(optarg, "zap") == 0) output_format = OUTPUT_ZAP;
 			else if (strcmp(optarg, "vdr") == 0) output_format = OUTPUT_VDR;
+			else {
+				bad_usage(argv[0], 0);
+				return -1;
+			}
+			output_format_set = 1;
+			break;
+
+		case 'D':
+			if      (strcmp(optarg, "S1") == 0) disable_s1 = TRUE;
+			else if (strcmp(optarg, "S2") == 0) disable_s2 = TRUE;
 			else {
 				bad_usage(argv[0], 0);
 				return -1;

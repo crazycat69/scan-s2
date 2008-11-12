@@ -45,6 +45,8 @@ Those files are just samples and defenitelly do not include all frequencies you 
 The format of frequencies files is as follows:
 For DVB-S/S2:
 S <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
+S1 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
+S2 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
 For DVB-C:
 C <frequency> <symbol rate> [fec] [modulation]
 For DVB-T:
@@ -55,10 +57,18 @@ A <frequency> [modulation]
 Where every <> parameter is required, [] is optional.
 All non specified optional parameter will be considered as specified in AUTO mode.
 If one of the optional parameters has to be specified and it has more optional parameters before it,
-than all the parameters up to the needed one has to be implicitly specified. For example, if modulation
+than all the parameters up to the needed one has to be explicitly specified. For example, if modulation
 have to be specified for DVB-S format, while FEC and ROLLOFF are not known, than FEC and ROLLOFF has to
 be stated as AUTO:
 S 10719000 V 27500000 AUTO AUTO QPSK
+
+S1 entry type will scan the specified frequency only in DVB-S mode.
+S2 entry type will scan the specified frequency only in DVB-S2 mode.
+If you're an owner of DVB-S card (non-S2), you can use "-D S2" switch to disable DVB-S2 scan mode for 
+all frequencies.
+S entry type will be scanned for both DVB-S and DVB-S2 on the specified frequency with the following exceptions:
+ - "-D" switch specified to disable one of the scan modes.
+ - 8PSK modulation specified - in that case only DVB-S2 scan will be used.
 
 Possible values for parameters are:
 Polarity: H, V, R, L
@@ -75,39 +85,52 @@ Current version was tested with DVB-S/DVB-S2 standard and VDR output only with l
 Diseqc implementataion tested with 8-to-1 Centurion switch.
 
 usage:
-	./scan-s2 [options...] [-c | initial-tuning-data-file]
-        -c      scan on currently tuned transponder only
-        -v      verbose (repeat for more)
-        -q      quiet (repeat for less)
-        -a N    use DVB /dev/dvb/adapterN/
-        -f N    use DVB /dev/dvb/adapter?/frontendN
-        -d N    use DVB /dev/dvb/adapter?/demuxN
-        -s N    use DiSEqC switch position N (DVB-S only)
-        -S N    use DiSEqC uncommitted switch position N (DVB-S only)
-        -i N    spectral inversion setting (0: off, 1: on, 2: auto [default])
-        -n      evaluate NIT messages for full network scan (slow!)
-        -5      multiply all filter timeouts by factor 5
-                for non-DVB-compliant section repitition rates
-        -O pos  Orbital position override 'S4W', 'S19.2E' - good for VDR output
-        -k cnt  Skip count, will skip every first specified messages for every message type (default 0)
-        -I cnt  Scan iterations count (default 10). Larger number will make scan longer on every channel
-        -o fmt  output format: 'vdr' (default) or 'zap'
-        -x N    Conditional Access, (default -1)
-				N=-2  gets all channels (FTA and encrypted), output received CAID :CAID:\n"
-                N=-1  gets all channels (FTA and encrypted), output CA is set to :0:
-                N=0   gets only FTA channels
-                N=xxx sets ca field in vdr output to :xxx:
-        -t N    Service select, Combined bitfield parameter.
-                1 = TV, 2 = Radio, 4 = Other, (default 7)
-        -p      for vdr output format: dump provider name
-        -l lnb-type (DVB-S Only) (use -l help to print types) or 
-        -l low[,high[,switch]] in Mhz
-        -u      UK DVB-T Freeview channel numbering for VDR
+usage: scan-s2 [options...] [-c | initial-tuning-data-file]
+	atsc/dvbscan doesn't do frequency scans, hence it needs initial
+	tuning data for at least one transponder/channel.
+	-c	scan on currently tuned transponder only
+	-v 	verbose (repeat for more)
+	-q 	quiet (repeat for less)
+	-a N	use DVB /dev/dvb/adapterN/
+	-f N	use DVB /dev/dvb/adapter?/frontendN
+	-d N	use DVB /dev/dvb/adapter?/demuxN
+	-s N	use DiSEqC switch position N (DVB-S only)
+	-S N    use DiSEqC uncommitted switch position N (DVB-S only)
+	-i N	spectral inversion setting (0: off, 1: on, 2: auto [default])
+	-n	evaluate NIT messages for full network scan (slow!)
+	-5	multiply all filter timeouts by factor 5
+		for non-DVB-compliant section repitition rates
+	-O pos	Orbital position override 'S4W', 'S19.2E' - good for VDR output
+	-k cnt	Skip count, will skip every first specified
+		messages for every message type (default 0)
+	-I cnt	Scan iterations count (default 10).
+		Larger number will make scan longer on every channel
+	-o fmt	output format: 'vdr' (default) or 'zap'
+	-x N	Conditional Access, (default -1)
+		N=-2  gets all channels (FTA and encrypted),
+		      output received CAID :CAID:
+		N=-1  gets all channels (FTA and encrypted),
+		      output CA is set to :0:
+		N=0   gets only FTA channels
+		N=xxx  sets ca field in vdr output to :xxx:
+	-t N  Service select, Combined bitfield parameter.
+		1 = TV, 2 = Radio, 4 = Other, (default 7)
+	-p	for vdr output format: dump provider name
+	-e N  VDR version, default 2 for VDR-1.2.x
+		ANYTHING ELSE GIVES NONZERO NIT and TID
+		Vdr version 1.3.x and up implies -p.
+	-l lnb-type (DVB-S Only) (use -l help to print types) or 
+	-l low[,high[,switch]] in Mhz
+	-u UK DVB-T Freeview channel numbering for VDR
 
-        -P do not use ATSC PSIP tables for scanning
-            (but only PAT and PMT) (applies for ATSC only)
-        -A N    check for ATSC 1=Terrestrial [default], 2=Cable or 3=both
-        -U      Uniquely name unknown services
+	-P do not use ATSC PSIP tables for scanning
+	    (but only PAT and PMT) (applies for ATSC only)
+	-A N	check for ATSC 1=Terrestrial [default], 2=Cable or 3=both
+	-U	Uniquely name unknown services
+	-D s	Disable specified scan mode (by default all modes are enabled)
+		s=S1  Disable DVB-S scan
+		s=S2  Disable DVB-S2 scan (good for owners of cards that do not
+		      support DVB-S2 systems)
 
 
 Example of command line:
@@ -116,9 +139,6 @@ scan-s2 -5 -o vdr -x 0 -s 2 -S 0 -v -U -O S19.2E dvb-s/Astra-19.2E > channels.co
 In case you experience random missing channels after several scans of the same frequency,
 try adding "-k 3" to command line. Some drivers have a buffer and will dump messages from previously
 locked channel that have to be ignored.
-
-When sattelite system is used, every frequency will be scanned for DVB-S2 delivery system when DVB-S system
-has no results.
 
 For VDR output format type "man 5 vdr"
 

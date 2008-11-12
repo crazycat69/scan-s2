@@ -1801,16 +1801,18 @@ static const char * enum2str(int v, const struct strtab *tab, const char *deflt)
 }
 
 struct strtab fectab[] = {
-	{ "NONE", FEC_NONE },
-	{ "1/2",  FEC_1_2 },
-	{ "2/3",  FEC_2_3 },
-	{ "3/4",  FEC_3_4 },
-	{ "4/5",  FEC_4_5 },
-	{ "5/6",  FEC_5_6 },
-	{ "6/7",  FEC_6_7 },
-	{ "7/8",  FEC_7_8 },
-	{ "8/9",  FEC_8_9 },
-	{ "AUTO", FEC_AUTO },
+	{ "NONE",	FEC_NONE },
+	{ "1/2",	FEC_1_2 },
+	{ "2/3",	FEC_2_3 },
+	{ "3/4",	FEC_3_4 },
+	{ "3/5",	FEC_3_5 },
+	{ "4/5",	FEC_4_5 },
+	{ "5/6",	FEC_5_6 },
+	{ "6/7",	FEC_6_7 },
+	{ "7/8",	FEC_7_8 },
+	{ "8/9",	FEC_8_9 },
+	{ "9/10",	FEC_9_10 },
+	{ "AUTO",	FEC_AUTO },
 	{ NULL, 0 }
 };
 

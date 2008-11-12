@@ -72,7 +72,7 @@ S entry type will be scanned for both DVB-S and DVB-S2 on the specified frequenc
 
 Possible values for parameters are:
 Polarity: H, V, R, L
-FEC: NONE, 1/2, 2/3, 3/4, 4/5, 5/6, 6/7, 7/8, 8/9, AUTO
+FEC: NONE, 1/2, 2/3, 3/4, 3/5, 4/5, 5/6, 6/7, 7/8, 8/9, 9/10, AUTO
 Modulation: QPSK, QAM16, QAM32, QAM64, QAM128, QAM256, 8VSB, 16VSB, 8PSK, 16APSK, AUTO
 Bandwidth: 6MHz, 7MHz, 8MHz, AUTO
 Transmission mode: 2k, 8k, AUTO

@@ -4,3 +4,5 @@ http://arvdr-dev.free-x.de:8080/freex-dvb-apps/rev/55bf7441a602
 Revise NIT messages processing, probably need to redesign to parse the whole message in a struct
 and handle when all information is available. This way it will be possible to determine whenever
 new added channels are DVB-S or DVB-S2.
+
+Check deeply why network ID is not dumped although other applications report it successfuly.

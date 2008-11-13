@@ -84,8 +84,7 @@ NOTE:
 Current version was tested with DVB-S/DVB-S2 standard and VDR output only with limited number of options.
 Diseqc implementataion tested with 8-to-1 Centurion switch.
 
-usage:
-usage: scan-s2 [options...] [-c | initial-tuning-data-file]
+usage: ./scan-s2 [options...] [-c | initial-tuning-data-file]
 	atsc/dvbscan doesn't do frequency scans, hence it needs initial
 	tuning data for at least one transponder/channel.
 	-c	scan on currently tuned transponder only
@@ -96,6 +95,8 @@ usage: scan-s2 [options...] [-c | initial-tuning-data-file]
 	-d N	use DVB /dev/dvb/adapter?/demuxN
 	-s N	use DiSEqC switch position N (DVB-S only)
 	-S N    use DiSEqC uncommitted switch position N (DVB-S only)
+	-r sat  move DiSEqC rotor to satellite location, e.g. '13.0E' or '1.0W'
+	-R N    move DiSEqC rotor to position number N
 	-i N	spectral inversion setting (0: off, 1: on, 2: auto [default])
 	-n	evaluate NIT messages for full network scan (slow!)
 	-5	multiply all filter timeouts by factor 5

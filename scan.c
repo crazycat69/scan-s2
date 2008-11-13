@@ -84,12 +84,16 @@ static int unique_anon_services;
 static fe_spectral_inversion_t spectral_inversion = INVERSION_AUTO;
 static int switch_pos = 0;
 static int uncommitted_switch_pos = 0;
+static int rotor_pos = 0;
+static int curr_rotor_pos = 0;
+static char rotor_pos_name[16] = "";
 static char override_orbital_pos[16] = "";
 static enum format output_format = OUTPUT_VDR;
 static int output_format_set = 0;
 static int disable_s1 = FALSE;
 static int disable_s2 = FALSE;
 
+static rotorslot_t rotor[49];
 
 struct section_buf {
 	struct list_head list;
@@ -1577,6 +1581,20 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		if (verbosity >= 2) {
 			dprintf(1,"DVB-S IF freq is %d\n", if_freq);
 		}
+
+		if (rotor_pos != 0 ) {
+			/* Rotate DiSEqC 1.2 rotor to correct orbital position */
+			if (t->orbital_pos!=0) rotor_pos = rotor_nn(t->orbital_pos, t->we_flag);
+			int err;
+			err = rotate_rotor(	frontend_fd,
+						curr_rotor_pos, 
+						rotor_pos,
+						t->polarisation == POLARISATION_VERTICAL ? 0 : 1);
+			if (err)
+				error("Error in rotate_rotor err=%i\n",err); 
+			else
+				curr_rotor_pos = rotor_pos;
+		}
 		break;
 
 	case SYS_DVBT:
@@ -1941,6 +1959,78 @@ static enum fe_hierarchy str2hier(const char *hier)
 static const char* hier2str(enum fe_hierarchy hier)
 {
 	return enum2str(hier, hiertab, "???");
+}
+
+static int read_rotor_conf(const char *rotor_conf)
+{
+	FILE *rotor_conf_fd;
+	unsigned int nn;
+	char buf[200], angle_we[20], angle[20], we[2];
+	int i = -1;
+	rotor_conf_fd = fopen (rotor_conf, "r");
+	if (!rotor_conf_fd){
+		error("Cannot open rotor configuration file '%s'.\n", rotor_conf);
+		return errno;
+	}
+	while (fgets(buf, sizeof(buf), rotor_conf_fd)) {
+		if (buf[0] != '#' && buf[0] != '\n') {
+			if (sscanf(buf, "%u %s\n", &nn, angle_we)==2) {
+				i++;
+				rotor[i].nn = nn;
+				strcpy(rotor[i].angle_we,angle_we);
+				strncpy(angle,angle_we,strlen(angle_we)-1);
+				rotor[i].orbital_pos = atof(angle) * 10;
+				strncpy(we,angle_we+strlen(angle_we)-1,1);
+				we[1]='\0';
+				rotor[i].we_flag = (strcmp(we,"W")==0 || strcmp(we,"w")==0) ? 0 : 1;
+				//info("rotor: i=%i, nn=%i, orbital_pos=%i we_flag=%i\n", 
+				//	i, rotor[i].nn, rotor[i].orbital_pos, rotor[i].we_flag);
+			}
+		}
+	}
+	fclose(rotor_conf_fd);
+	return 0;
+}
+
+int rotor_nn(int orbital_pos, int we_flag){
+	/*given say 192,1 return the position number*/
+	int i;
+	for (i=0; i<49; i++){
+		if (rotor[i].orbital_pos == orbital_pos && rotor[i].we_flag == we_flag) {
+			return rotor[i].nn;
+		}
+	}
+	error("rotor_nn: orbital_pos=%i, we_flag=%i not found.\n", orbital_pos, we_flag);
+	return 0;
+}
+
+int rotor_name2nn(char *angle_we){
+	/*given say '19.2E' return the position number*/
+	int i;
+	for (i=0; i<49; i++){
+		if (strcmp(rotor[i].angle_we, angle_we) == 0) {
+			return rotor[i].nn;
+		}
+	}
+	error("rotor_name2nn: '%s' not found.\n", angle_we);
+	return 0;
+}
+
+float rotor_angle(int nn) {
+	/*given nn, return the angle in 0.0-359.9 range (1=1.0E, 359=1.0W) */
+	int i;
+	float angle;
+	for (i=0; i<49; i++){
+		if (rotor[i].nn == nn) {
+			if(rotor[i].we_flag == 0) //west
+				angle = 360.00 - rotor[i].orbital_pos / 10;
+			else //east
+				angle = rotor[i].orbital_pos / 10;
+			return angle;
+		}
+	}
+	error("rotor_angle: nn=%i not found",nn);
+	return -999;
 }
 
 static int tune_initial (int frontend_fd, const char *initial)
@@ -2428,6 +2518,8 @@ static const char *usage = "\n"
 "	-d N	use DVB /dev/dvb/adapter?/demuxN\n"
 "	-s N	use DiSEqC switch position N (DVB-S only)\n"
 "	-S N    use DiSEqC uncommitted switch position N (DVB-S only)\n"
+"	-r sat  move DiSEqC rotor to satellite location, e.g. '13.0E' or '1.0W'\n"
+"	-R N    move DiSEqC rotor to position number N\n"
 "	-i N	spectral inversion setting (0: off, 1: on, 2: auto [default])\n"
 "	-n	evaluate NIT messages for full network scan (slow!)\n"
 "	-5	multiply all filter timeouts by factor 5\n"
@@ -2514,7 +2606,7 @@ int main (int argc, char **argv)
 
 	/* start with default lnb type */
 	lnb_type = *lnb_enum(0);
-	while ((opt = getopt(argc, argv, "5cnpa:f:d:O:k:I:S:s:o:D:x:t:i:l:vquPA:U")) != -1) {
+	while ((opt = getopt(argc, argv, "5cnpa:f:d:O:k:I:S:s:r:R:o:D:x:t:i:l:vquPA:U")) != -1) {
 		switch (opt) 
 		{
 		case 'a':
@@ -2558,6 +2650,14 @@ int main (int argc, char **argv)
 		case 'S':
 			uncommitted_switch_pos = strtoul(optarg, NULL, 0);
 			break;
+
+		case 'r':
+			strncpy(rotor_pos_name,optarg,sizeof(rotor_pos_name)-1);
+			break;
+
+		case 'R':
+			rotor_pos = strtoul(optarg, NULL, 0);
+ 			break;
 
 		case 'O':
 			strncpy(override_orbital_pos, optarg, sizeof(override_orbital_pos)-1);
@@ -2660,6 +2760,17 @@ int main (int argc, char **argv)
 		fprintf (stderr, "uncommitted_switch position needs to be < 16!\n");
 		return -1;
 	}
+
+	if(read_rotor_conf("rotor.conf") == 0) {
+		if (strlen(rotor_pos_name)>0){
+			rotor_pos=rotor_name2nn(rotor_pos_name);
+			if (rotor_pos == 0){
+				fprintf(stderr,"Rotor position '%s' not found. Check config.",rotor_pos_name);
+				return -1;
+			}
+		}
+	}
+
 	if (initial)
 		info("scanning %s\n", initial);
 

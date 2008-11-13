@@ -46,6 +46,78 @@ struct diseqc_cmd uncommitted_switch_cmds[] = {
 
 /*--------------------------------------------------------------------------*/
 
+
+#define DISEQC_X 2
+int rotor_command( int frontend_fd, int cmd, int n1, int n2, int n3 )
+{
+	int err;
+        struct dvb_diseqc_master_cmd cmds[] = {
+                { { 0xe0, 0x31, 0x60, 0x00, 0x00, 0x00 }, 3 },  //0 Stop Positioner movement
+                { { 0xe0, 0x31, 0x63, 0x00, 0x00, 0x00 }, 3 },  //1 Disable Limits
+                { { 0xe0, 0x31, 0x66, 0x00, 0x00, 0x00 }, 3 },  //2 Set East Limit
+                { { 0xe0, 0x31, 0x67, 0x00, 0x00, 0x00 }, 3 },  //3 Set West Limit
+                { { 0xe0, 0x31, 0x68, 0x00, 0x00, 0x00 }, 4 },  //4 Drive Motor East continously
+                { { 0xe0, 0x31, 0x68,256-n1,0x00, 0x00 }, 4 },  //5 Drive Motor East nn steps
+                { { 0xe0, 0x31, 0x69,256-n1,0x00, 0x00 }, 4 },  //6 Drive Motor West nn steps
+                { { 0xe0, 0x31, 0x69, 0x00, 0x00, 0x00 }, 4 },  //7 Drive Motor West continously
+                { { 0xe0, 0x31, 0x6a, n1, 0x00, 0x00 }, 4 },  //8 Store nn
+                { { 0xe0, 0x31, 0x6b, n1, 0x00, 0x00 }, 4 },   //9 Goto nn
+                { { 0xe0, 0x31, 0x6f, n1, n2, n3 }, 4}, //10 Recalculate Position
+                { { 0xe0, 0x31, 0x6a, 0x00, 0x00, 0x00 }, 4 },  //11 Enable Limits
+                { { 0xe0, 0x31, 0x6e, n1, n2, 0x00 }, 5 },   //12 Gotoxx
+                { { 0xe0, 0x10, 0x38, 0xF4, 0x00, 0x00 }, 4 }    //13 User
+        };
+
+        int i;
+        for ( i=0; i<DISEQC_X; ++i ) {
+                usleep(15*1000);
+                if ( err = ioctl( frontend_fd, FE_DISEQC_SEND_MASTER_CMD, &cmds[cmd] ) )
+                        error("rotor_command: FE_DISEQC_SEND_MASTER_CMD failed, err=%i\n",err);
+        }
+	return err;
+}
+
+int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int voltage_18){
+	/* Rotate a DiSEqC 1.2 rotor from position from_rotor_pos to position to_rotor_pos */
+	/* Uses Goto nn (command 9) */
+	float rotor_wait_time; //seconds
+	int err=0;
+
+	float speed_13V = 1.5; //degrees per second
+	float speed_18V = 2.4; //degrees per second
+	float degreesmoved,a1,a2;
+
+	if (to_rotor_pos != 0) {
+		if (from_rotor_pos != to_rotor_pos) {
+			info("Moving rotor from position %i to position %i\n",from_rotor_pos,to_rotor_pos);
+			if (from_rotor_pos == 0) {
+				rotor_wait_time = 15; // starting from unknown position
+			} else {
+				a1 = rotor_angle(to_rotor_pos);
+				a2 = rotor_angle(from_rotor_pos);
+				degreesmoved = abs(a1-a2);
+				if (degreesmoved>180) degreesmoved=360-degreesmoved;
+				rotor_wait_time = degreesmoved / (voltage_18 ? speed_18V : speed_13V);
+			}
+			err = rotor_command(frontend_fd, 9, to_rotor_pos, 0, 0);
+			if (err) {
+				info("Rotor move error!\n");
+			} else {
+				int i;
+				info("Rotating");
+				for (i=0; i<10; i++){
+					usleep(rotor_wait_time*100000);
+					info(".");
+				}
+				info("completed.\n");
+			}
+		} else {
+			info("Rotor already at position %i\n", from_rotor_pos);
+		}
+	}
+	return err;
+}
+
 static inline void msleep(uint32_t msec)
 {
 	struct timespec req = { msec / 1000, 1000000 * (msec % 1000) };

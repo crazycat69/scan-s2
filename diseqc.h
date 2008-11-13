@@ -17,7 +17,7 @@ extern int diseqc_send_msg (int fd, fe_sec_voltage_t v, struct diseqc_cmd **cmd,
 *   set up the switch to position/voltage/tone
 */
 extern int setup_switch (int frontend_fd, int switch_pos, int voltage_18, int freq, int uncommitted_switch_pos);
-
+extern int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int voltage_18);
 
 #endif
 

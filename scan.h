@@ -105,6 +105,12 @@ typedef struct transponder {
 	uint32_t *other_f;			/* DVB-T freqeuency-list descriptor */
 } transponder_t;
 
+typedef struct rotorslot {
+	unsigned int nn;
+	int orbital_pos;		// 192  degrees*10
+	unsigned int we_flag;	// 0=W, 1=E
+	char angle_we[8];		// '19.2E'
+} rotorslot_t;
 
 #endif
 

@@ -132,6 +132,8 @@ usage: scan-s2 [options...] [-c | initial-tuning-data-file]
 		s=S1  Disable DVB-S scan
 		s=S2  Disable DVB-S2 scan (good for owners of cards that do not
 		      support DVB-S2 systems)
+	-X	Disable AUTOs for initial transponders (esp. for hardware which
+		not support it). Instead try each value of any free parameters.
 
 
 Example of command line:

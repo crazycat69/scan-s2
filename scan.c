@@ -73,6 +73,7 @@ static int skip_count = 0;
 static int long_timeout;
 static int current_tp_only;
 static int get_other_nits;
+static int noauto=0;
 static int vdr_dump_provider;
 static int vdr_dump_channum;
 static int no_ATSC_PSIP;
@@ -198,7 +199,7 @@ static void remove_duplicate_transponder(struct transponder *t)
 		tp = list_entry(pos, struct transponder, list);
 
 		if (is_same_transponder(tp->frequency, t->frequency) && tp != t) {
-			pos = tp->list.next;
+			pos = tp->list.prev;
 			list_del_init(&tp->list);
 		}
 	}
@@ -415,25 +416,42 @@ static void parse_s2_satellite_delivery_system_descriptor (const unsigned char *
 
 static void parse_satellite_delivery_system_descriptor (const unsigned char *buf, struct transponder *t)
 {
-	static const fe_code_rate_t fec_tab [8] = {
-		FEC_AUTO, FEC_1_2, FEC_2_3, FEC_3_4,
-		FEC_5_6, FEC_7_8, FEC_NONE, FEC_NONE
-	};
-
 	if (!t) {
 		warning("satellite_delivery_system_descriptor outside transport stream definition (ignored)\n");
 		return;
 	}
 
-	if(((buf[8] >> 1) & 0x01) == 0) {
-		t->delivery_system = SYS_DVBS;
-	}
-	else {
-		t->delivery_system = SYS_DVBS2;
+	switch ( getBits(buf,69,1) ) {
+                case 0: t->delivery_system = SYS_DVBS; break;
+                case 1: t->delivery_system = SYS_DVBS2; break;
+        }
+
+        if (t->delivery_system == SYS_DVBS2) {
+                switch ( getBits(buf,67,2) ) {
+                        case 0 : t->rolloff = ROLLOFF_35; break;
+                        case 1 : t->rolloff = ROLLOFF_25; break;
+                        case 2 : t->rolloff = ROLLOFF_20; break;
+                }
+        } else {
+		if (noauto) t->rolloff = ROLLOFF_35;
 	}
 
 	t->frequency = 10 * bcd32_to_cpu (buf[2], buf[3], buf[4], buf[5]);
-	t->fec = fec_tab[buf[12] & 0x07];
+
+        switch ( getBits(buf,100,4) ) {
+                case 0 : t->fec = FEC_AUTO; break;
+                case 1 : t->fec = FEC_1_2; break;
+                case 2 : t->fec = FEC_2_3; break;
+                case 3 : t->fec = FEC_3_4; break;
+                case 4 : t->fec = FEC_5_6; break;
+                case 5 : t->fec = FEC_7_8; break;
+                case 6 : t->fec = FEC_8_9; break;
+                case 7 : t->fec = FEC_3_5; break;
+                case 8 : t->fec = FEC_4_5; break;
+                case 9 : t->fec = FEC_9_10; break;
+                case 15 : t->fec = FEC_NONE; break;
+        }
+
 	t->symbol_rate = 10 * bcd32_to_cpu (buf[9], buf[10], buf[11], buf[12] & 0xf0);
 
 	t->inversion = spectral_inversion;	
@@ -442,9 +460,17 @@ static void parse_satellite_delivery_system_descriptor (const unsigned char *buf
 	t->orbital_pos = bcd32_to_cpu (0x00, 0x00, buf[6], buf[7]);
 	t->we_flag = buf[8] >> 7;
 
+	switch ( getBits(buf,70,2) ) {
+		case 0 : t->modulation = QAM_AUTO; break;
+		case 1 : t->modulation = QPSK; break;
+		case 2 : t->modulation = PSK_8; break;
+		case 3 : t->modulation = QAM_16; break;
+	}
+
 	if (verbosity >= 5) {
 		debug("%#04x/%#04x ", t->network_id, t->transport_stream_id);
 		dump_dvb_parameters (stderr, t);
+		printf("\n");
 		if (t->scan_done)
 			dprintf(5, " (done)");
 		if (t->last_tuning_failed)
@@ -907,8 +933,6 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 				descriptors_loop_len);
 			break;
 		}
-
-		debug("transport_stream_id 0x%04X\n", transport_stream_id);
 
 		memset(&tn, 0, sizeof(tn));
 		tn.network_id = network_id;
@@ -2083,107 +2107,106 @@ static int tune_initial (int frontend_fd, const char *initial)
 		if (buf[0] == '#' || buf[0] == '\n')
 			;
 		else if (sscanf(buf, "S%c %u %1[HVLR] %u %4s %4s %6s\n", &scan_mode, &f, pol, &sr, fec, rolloff, qam) >= 3) {
-			t = alloc_transponder(f);
-			t->delivery_system = SYS_DVBS;
-			t->modulation = QAM_AUTO;
-			t->rolloff = ROLLOFF_AUTO;
-			t->fec = FEC_AUTO;
-
+			scan_mode1 = FALSE;
+			scan_mode2 = FALSE;
 			switch(scan_mode)
 			{
 			case '1':
 				/* Enable only DVB-S mode */
-				scan_mode1 = TRUE;
+				if (!disable_s1) scan_mode1 = TRUE;
 				break;
-
+				
 			case '2':
 				/* Enable only DVB-S2 mode */
-				scan_mode2 = TRUE;
+				if (!disable_s2) scan_mode2 = TRUE;
 				break;
 
 			default:
 				/* Enable both DVB-S and DVB-S2 scan modes */
-				scan_mode1 = TRUE;
-				scan_mode2 = TRUE;
+				if (!disable_s1) scan_mode1 = TRUE;
+				if (!disable_s2) scan_mode2 = TRUE;
 				break;
 			}
 
-			switch(pol[0]) 
-			{
-			case 'H':
-			case 'L':
-				t->polarisation = POLARISATION_HORIZONTAL;
-				break;
-			default:
-				t->polarisation = POLARISATION_VERTICAL;;
-				break;
-			}
-			t->inversion = spectral_inversion;
-			t->symbol_rate = sr;
+			/*Generate a list of transponders, explicitly enumerating the AUTOs if they
+  			  are disabled with the -X parameter.*/
 
-			// parse optional parameters
-			if(strlen(fec) > 0) {
-				t->fec = str2fec(fec);
-			}
+			int nmod,nfec,ndel,nrol;
+			int imod,ifec,idel,irol;
 
-			if(strlen(rolloff) > 0) {
-				t->rolloff = str2rolloff(rolloff);
-			}
+			/* set up list of delivery systems*/
+			fe_delivery_system_t delset[]={SYS_DVBS,SYS_DVBS2};
+			ndel=2;
+			if (scan_mode1 && !scan_mode2) {delset[0]=SYS_DVBS ; ndel=1;}
+			if (!scan_mode1 && scan_mode2) {delset[0]=SYS_DVBS2; ndel=1;}
 
-			if(strlen(qam) > 0) {
-				t->modulation = str2qam(qam);
+			/* set up list of modulations*/
+			fe_modulation_t modset[2]={ QPSK, PSK_8 };
+			nmod=2;
+			if (strlen(qam)>0) {
+				modset[0]=str2qam(qam); nmod=1;
+			} else if (noauto) { 
+				if (scan_mode1 && !scan_mode2 ) nmod=1;
+			} else {
+				modset[0]=QAM_AUTO; nmod=1;
 			}
 
-			switch(t->modulation)
-			{
-			case PSK_8:
-				/* DVB-S2 modulation is explicitly specified, scan only in DVB-S2 mode */
-				scan_mode1 = FALSE;
-				scan_mode2 = TRUE;
-				break;
+			/* set up list of rollofs*/			
+			fe_rolloff_t rolset[3]={ROLLOFF_35,ROLLOFF_25,ROLLOFF_20};
+			nrol=3;
+			if (strlen(rolloff)>0) {
+				rolset[0]=str2rolloff(rolloff); nrol=1;
+			} else if (noauto) { 
+				if (scan_mode1 && ! scan_mode2) nrol=1;
+			} else {
+				rolset[0]=ROLLOFF_AUTO; nrol=1;
 			}
 
-			/* Apply disable flags */
-			if(disable_s1) {
-				scan_mode1 = FALSE;
-			}
-			if(disable_s2) {
-				scan_mode2 = FALSE;
+			/* set up list of FECs*/
+			fe_code_rate_t fecset[9]={FEC_1_2,FEC_2_3,FEC_3_4,FEC_5_6,FEC_7_8,FEC_8_9,FEC_3_5,FEC_4_5,FEC_9_10};
+			if (strlen(fec)>0) {
+				fecset[0]=str2fec(fec); nfec=1;
+			} else if (noauto) { 
+				if (scan_mode1) nfec=6;
+				if (scan_mode2) nfec=9;
+			} else {
+				fecset[0]=FEC_AUTO; nfec=1;
 			}
 
-			/* Both modes should be scanned */
-			if(scan_mode1 && scan_mode2) {
-				/* Set current transponder to DVB-S delivery */
-				t->delivery_system = SYS_DVBS;
+			for (idel=0;idel<ndel;idel++){
+			for (ifec=0;ifec<nfec;ifec++){
+			for (irol=0;irol<nrol;irol++){
+			for (imod=0;imod<nmod;imod++){
+				/*skip impossible settings*/
+				if ((rolset[irol]==ROLLOFF_25||rolset[irol]==ROLLOFF_20) && delset[idel]!=SYS_DVBS2) continue;
+				if (ifec > 5 && delset[idel]!=SYS_DVBS2) continue;
+				if (modset[imod] == PSK_8 && delset[idel] != SYS_DVBS2) continue;
 
-				/* create new transponder for the second mode */
-				t2 = alloc_transponder(f);
-				/* copy all parameters from original transponder */
-				copy_transponder(t2, t);
-				/* set second transponder to DVB-S2 */
-				t2->delivery_system = SYS_DVBS2;
+				t = alloc_transponder(f);
+
+				t->delivery_system = delset[idel];
+				t->modulation = modset[imod];
+				t->rolloff = rolset[irol];
+				t->fec = fecset[ifec];
+
+				switch(pol[0]) 
+				{
+				case 'H':
+				case 'L':
+					t->polarisation = POLARISATION_HORIZONTAL;
+					break;
+				default:
+					t->polarisation = POLARISATION_VERTICAL;;
+					break;
+				}
+				t->inversion = spectral_inversion;
+				t->symbol_rate = sr;
 
 				info("initial transponder DVB-S%s %u %c %d %s %s %s\n",
 					t->delivery_system==SYS_DVBS?" ":"2",
 					t->frequency,
 					pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
-
-				/* change the main pointer so the second added transponder will be printed */
-				t = t2;
-			}
-			else { /* only one system should be used */
-				if(scan_mode1) {
-					t->delivery_system = SYS_DVBS;
-				}
-				else if(scan_mode2) {
-					t->delivery_system = SYS_DVBS2;
-				}
-			}
-
-			info("initial transponder DVB-S%s %u %c %d %s %s %s\n",
-				t->delivery_system==SYS_DVBS?" ":"2",
-				t->frequency,
-				pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
+			}}}}
 		}
 		else if (sscanf(buf, "C %u %u %4s %6s\n", &f, &sr, fec, qam) >= 2) {
 			t = alloc_transponder(f);
@@ -2572,7 +2595,10 @@ static const char *usage = "\n"
 "	-D s	Disable specified scan mode (by default all modes are enabled)\n"
 "		s=S1  Disable DVB-S scan\n"
 "		s=S2  Disable DVB-S2 scan (good for owners of cards that do not\n"
-"		      support DVB-S2 systems)\n";
+"		      support DVB-S2 systems)\n"
+"	-X	Disable AUTOs for initial transponders (esp. for hardware which\n"
+"		not support it). Instead try each value of any free parameters.\n";
+
 
 void bad_usage(char *pname, int problem)
 {
@@ -2625,7 +2651,7 @@ int main (int argc, char **argv)
 
 	/* start with default lnb type */
 	lnb_type = *lnb_enum(0);
-	while ((opt = getopt(argc, argv, "5cnpa:f:d:O:k:I:S:s:r:R:o:D:x:t:i:l:vquPA:U")) != -1) {
+	while ((opt = getopt(argc, argv, "5cnXpa:f:d:O:k:I:S:s:r:R:o:D:x:t:i:l:vquPA:U")) != -1) {
 		switch (opt) 
 		{
 		case 'a':
@@ -2640,6 +2666,10 @@ int main (int argc, char **argv)
 
 		case 'n':
 			get_other_nits = 1;
+			break;
+
+		case 'X':
+			noauto = 1;
 			break;
 
 		case 'd':

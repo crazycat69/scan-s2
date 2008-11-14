@@ -189,6 +189,21 @@ static struct transponder *find_transponder(uint32_t frequency)
 	return NULL;
 }
 
+static void remove_duplicate_transponder(struct transponder *t)
+{
+	struct list_head *pos;
+	struct transponder *tp;
+
+	list_for_each(pos, &new_transponders) {
+		tp = list_entry(pos, struct transponder, list);
+
+		if (is_same_transponder(tp->frequency, t->frequency) && tp != t) {
+			pos = tp->list.next;
+			list_del_init(&tp->list);
+		}
+	}
+}
+
 static void copy_transponder(struct transponder *d, struct transponder *s)
 {
 	d->network_id = s->network_id;
@@ -1658,6 +1673,10 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		// Tuning succeed
 		if (s & FE_HAS_LOCK) {
 			t->last_tuning_failed = 0;
+
+			/* Remove duplicate entries for the same frequency that were created for other delivery systems */
+			remove_duplicate_transponder(t);
+
 
 			struct dtv_property p[] = {
 				{ .cmd = DTV_DELIVERY_SYSTEM },

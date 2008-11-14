@@ -84,7 +84,7 @@ NOTE:
 Current version was tested with DVB-S/DVB-S2 standard and VDR output only with limited number of options.
 Diseqc implementataion tested with 8-to-1 Centurion switch.
 
-usage: ./scan-s2 [options...] [-c | initial-tuning-data-file]
+usage: scan-s2 [options...] [-c | initial-tuning-data-file]
 	atsc/dvbscan doesn't do frequency scans, hence it needs initial
 	tuning data for at least one transponder/channel.
 	-c	scan on currently tuned transponder only

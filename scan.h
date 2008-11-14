@@ -53,7 +53,6 @@ enum polarisation {
 
 typedef struct service {
 	struct list_head list;
-	int transport_stream_id;
 	int service_id;
 	char *provider_name;
 	char *service_name;

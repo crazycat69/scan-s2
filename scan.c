@@ -144,6 +144,8 @@ static struct transponder *alloc_transponder(uint32_t frequency)
 {
 	struct transponder *tp = calloc(1, sizeof(*tp));
 
+	memset(tp, 0, sizeof(*tp));
+
 	tp->frequency = frequency;
 
 	INIT_LIST_HEAD(&tp->list);
@@ -152,7 +154,7 @@ static struct transponder *alloc_transponder(uint32_t frequency)
 	return tp;
 }
 
-static int is_same_transponder(uint32_t f1, uint32_t f2)
+static int is_same_frequency(uint32_t f1, uint32_t f2)
 {
 	uint32_t diff;
 	if (f1 == f2)
@@ -166,7 +168,17 @@ static int is_same_transponder(uint32_t f1, uint32_t f2)
 	return 0;
 }
 
-static struct transponder *find_transponder(uint32_t frequency)
+static int is_same_transponder(struct transponder *t1, struct transponder *t2)
+{
+	if(is_same_frequency(t1->frequency, t2->frequency) && t1->polarisation == t2->polarisation) {
+		return 1;
+	}
+	else {
+		return 0;
+	}
+}
+
+static struct transponder *find_transponder_by_freq(uint32_t frequency)
 {
 	struct list_head *pos;
 	struct transponder *tp;
@@ -176,14 +188,38 @@ static struct transponder *find_transponder(uint32_t frequency)
 		if (current_tp_only)
 			return tp;
 
-		if (is_same_transponder(tp->frequency, frequency))
+		if (is_same_frequency(tp->frequency, frequency))
 			return tp;
 	}
 
 	list_for_each(pos, &new_transponders) {
 		tp = list_entry(pos, struct transponder, list);
 
-		if (is_same_transponder(tp->frequency, frequency))
+		if (is_same_frequency(tp->frequency, frequency))
+			return tp;
+	}
+
+	return NULL;
+}
+
+static struct transponder *find_transponder(uint32_t frequency, enum polarisation pol)
+{
+	struct list_head *pos;
+	struct transponder *tp;
+
+	list_for_each(pos, &scanned_transponders) {
+		tp = list_entry(pos, struct transponder, list);
+		if (current_tp_only)
+			return tp;
+
+		if (is_same_frequency(tp->frequency, frequency) && tp->polarisation == pol)
+			return tp;
+	}
+
+	list_for_each(pos, &new_transponders) {
+		tp = list_entry(pos, struct transponder, list);
+
+		if (is_same_frequency(tp->frequency, frequency) && tp->polarisation == pol)
 			return tp;
 	}
 
@@ -198,7 +234,7 @@ static void remove_duplicate_transponder(struct transponder *t)
 	list_for_each(pos, &new_transponders) {
 		tp = list_entry(pos, struct transponder, list);
 
-		if (is_same_transponder(tp->frequency, t->frequency) && tp != t) {
+		if (is_same_transponder(tp, t) && tp != t) {
 			pos = tp->list.prev;
 			list_del_init(&tp->list);
 		}
@@ -247,7 +283,6 @@ static struct service *alloc_service(struct transponder *tp, int service_id)
 	struct service *s = calloc(1, sizeof(*s));
 	INIT_LIST_HEAD(&s->list);
 	s->service_id = service_id;
-	s->transport_stream_id = tp->transport_stream_id;
 	list_add_tail(&s->list, &tp->services);
 	return s;
 }
@@ -610,7 +645,7 @@ static void parse_service_descriptor (const unsigned char *buf, struct service *
 	}
 
 	info("0x%04X 0x%04X: pmt_pid 0x%04X %s -- %s (%s%s)\n",
-		s->transport_stream_id,
+		current_tp->transport_stream_id,
 		s->service_id,
 		s->pmt_pid,
 		s->provider_name, s->service_name,
@@ -895,7 +930,7 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 		tmp += sprintf(tmp, ", 0x%04X (%.4s)", s->audio_pid[i], s->audio_lang[i]);
 
 	debug("0x%04X 0x%04X: %s -- %s, pmt_pid 0x%04X, vpid 0x%04X, apid %s\n",
-		s->transport_stream_id,
+		current_tp->transport_stream_id,
 		s->service_id,
 		s->provider_name, s->service_name,
 		s->pmt_pid, s->video_pid, msg_buf);
@@ -945,7 +980,7 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 
 		parse_descriptors (NIT, buf + 6, descriptors_loop_len, &tn);
 
-		t = find_transponder(tn.frequency);
+		t = find_transponder(tn.frequency, tn.polarisation);
 		
 		if (t == NULL) {
 			if(get_other_nits) {
@@ -1813,7 +1848,7 @@ next:
 			freq = t->other_f[t->n_other_f - 1];
 			t->n_other_f--;
 
-			if (find_transponder(freq))
+			if (find_transponder_by_freq(freq))
 				goto next;
 
 			/* remember tuning to the old frequency failed */

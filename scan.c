@@ -51,6 +51,62 @@
 #error scan-s2 requires Linux DVB driver API version 5.0!
 #endif
 
+#define CRC_LEN		4
+
+enum pid {
+	PID_PAT			= 0x0000,
+	PID_CAT			= 0x0001,
+	PID_TSDT		= 0x0002,
+	PID_NIT_ST		= 0x0010,
+	PID_SDT_BAT_ST	= 0x0011,
+	PID_EIT_STCIT	= 0x0012,
+	PID_RST_ST		= 0x0013,
+	PID_TDT_TOT_ST	= 0x0014,
+	PID_NET_SYNC	= 0x0015,
+	PID_RNT			= 0x0016,
+	PID_INBAND_SIG	= 0x001C,
+	PID_MEASUREMENT	= 0x001D,
+	PID_DIT			= 0x001E,
+	PID_SIT			= 0x001F,
+};
+
+enum table_id {
+	TID_PAT			= 0x00,		// Program association table
+	TID_CAT			= 0x01,		// Conditional access table
+	TID_PMT			= 0x02,		// Program map table
+	TID_SDT			= 0x03,		// Stream description table
+	// 0x04 .. 0x3F - Reserved
+	TID_NIT_ACTUAL	= 0x40,		// Network information table - actual network
+	TID_NIT_OTHER	= 0x41,		// Network information table - other network
+	TID_SDT_ACTUAL	= 0x42,		// Service description table - actual stream
+	// 0x43 .. 0x45 - Reserved
+	TID_SDT_OTHER	= 0x46,		// Service description table - other stream
+	// 0x47 .. 0x49 - Reserved
+	TID_BAT			= 0x4A,		// Bouquet association table
+	// 0x4B .. 0x4D - Reserved
+	TID_EIT_ACTUAL	= 0x4E,		// Event information table - actual stream - present/following
+	TID_EIT_OTHER	= 0x4F,		// Event information table - other stream - present/following
+	// 0x50 .. 0x5F					// Event information table - actual stream - schedule
+	// 0x60 .. 0x6F					// Event information table - other stream - schedule
+	TID_TDT			= 0x70,		// Time date table
+	TID_RST			= 0x71,		// Running status table
+	TID_ST			= 0x72,		// Stuffing table
+	TID_TOT			= 0x73,		// Time offset table
+	TID_AIT			= 0x74,		// Application information table
+	TID_CT			= 0x75,		// Container table
+	TID_RCT			= 0x76,		// Related content table
+	TID_CIT			= 0x77,		// Content identifier table
+	TID_MPE_FEC		= 0x78,		// MPE-FEC table
+	TID_RNT			= 0x79,		// Resolution notification table
+	// 0x7A .. 0x7D - Reserved
+	TID_DIT			= 0x7E,		// Discountinuity information table
+	TID_SIT			= 0x7F,		// Selection information table
+	// 0x80 .. 0xFE - User defined
+	TID_ATSC_CVT1	= 0xC8,
+	TID_ATSC_CVT2	= 0xC9,
+	// 0xFF - Reserved
+};
+
 enum table_type {
 	PAT,
 	PMT,
@@ -102,13 +158,12 @@ struct section_buf {
 	unsigned int run_once  : 1;
 	unsigned int segmented : 1;	/* segmented by table_id_ext */
 	int fd;
-	int pid;
-	int table_id;
+	enum pid pid;
+	enum table_id table_id;
 	int table_id_ext;
 	int section_version_number;
 	uint8_t section_done[32];
 	int sectionfilter_done;
-	unsigned char buf[1024];
 	time_t timeout;
 	time_t start_time;
 	time_t running_time;
@@ -126,7 +181,7 @@ static struct transponder *current_tp;
 static void dump_dvb_parameters (FILE *f, struct transponder *p);
 
 static void setup_filter (struct section_buf* s, const char *dmx_devname,
-						  int pid, int tid, int tid_ext,
+						  enum pid pid, enum table_id tid, int tid_ext,
 						  int run_once, int segmented, int timeout);
 static void add_filter (struct section_buf *s);
 
@@ -456,36 +511,41 @@ static void parse_satellite_delivery_system_descriptor (const unsigned char *buf
 		return;
 	}
 
-	switch ( getBits(buf,69,1) ) {
-                case 0: t->delivery_system = SYS_DVBS; break;
-                case 1: t->delivery_system = SYS_DVBS2; break;
-        }
+	switch ( getBits(buf,69,1) ) 
+	{
+	case 0: t->delivery_system = SYS_DVBS; break;
+	case 1: t->delivery_system = SYS_DVBS2; break;
+	}
 
-        if (t->delivery_system == SYS_DVBS2) {
-                switch ( getBits(buf,67,2) ) {
-                        case 0 : t->rolloff = ROLLOFF_35; break;
-                        case 1 : t->rolloff = ROLLOFF_25; break;
-                        case 2 : t->rolloff = ROLLOFF_20; break;
-                }
-        } else {
+	if (t->delivery_system == SYS_DVBS2) 
+	{
+		switch ( getBits(buf,67,2) ) 
+		{
+		case 0 : t->rolloff = ROLLOFF_35; break;
+		case 1 : t->rolloff = ROLLOFF_25; break;
+		case 2 : t->rolloff = ROLLOFF_20; break;
+		}
+	} 
+	else {
 		if (noauto) t->rolloff = ROLLOFF_35;
 	}
 
 	t->frequency = 10 * bcd32_to_cpu (buf[2], buf[3], buf[4], buf[5]);
 
-        switch ( getBits(buf,100,4) ) {
-                case 0 : t->fec = FEC_AUTO; break;
-                case 1 : t->fec = FEC_1_2; break;
-                case 2 : t->fec = FEC_2_3; break;
-                case 3 : t->fec = FEC_3_4; break;
-                case 4 : t->fec = FEC_5_6; break;
-                case 5 : t->fec = FEC_7_8; break;
-                case 6 : t->fec = FEC_8_9; break;
-                case 7 : t->fec = FEC_3_5; break;
-                case 8 : t->fec = FEC_4_5; break;
-                case 9 : t->fec = FEC_9_10; break;
-                case 15 : t->fec = FEC_NONE; break;
-        }
+	switch ( getBits(buf,100,4) ) 
+	{
+	case 0 : t->fec = FEC_AUTO; break;
+	case 1 : t->fec = FEC_1_2; break;
+	case 2 : t->fec = FEC_2_3; break;
+	case 3 : t->fec = FEC_3_4; break;
+	case 4 : t->fec = FEC_5_6; break;
+	case 5 : t->fec = FEC_7_8; break;
+	case 6 : t->fec = FEC_8_9; break;
+	case 7 : t->fec = FEC_3_5; break;
+	case 8 : t->fec = FEC_4_5; break;
+	case 9 : t->fec = FEC_9_10; break;
+	case 15 : t->fec = FEC_NONE; break;
+	}
 
 	t->symbol_rate = 10 * bcd32_to_cpu (buf[9], buf[10], buf[11], buf[12] & 0xf0);
 
@@ -495,11 +555,12 @@ static void parse_satellite_delivery_system_descriptor (const unsigned char *buf
 	t->orbital_pos = bcd32_to_cpu (0x00, 0x00, buf[6], buf[7]);
 	t->we_flag = buf[8] >> 7;
 
-	switch ( getBits(buf,70,2) ) {
-		case 0 : t->modulation = QAM_AUTO; break;
-		case 1 : t->modulation = QPSK; break;
-		case 2 : t->modulation = PSK_8; break;
-		case 3 : t->modulation = QAM_16; break;
+	switch ( getBits(buf,70,2) ) 
+	{
+	case 0 : t->modulation = QAM_AUTO; break;
+	case 1 : t->modulation = QPSK; break;
+	case 2 : t->modulation = PSK_8; break;
+	case 3 : t->modulation = QAM_16; break;
 	}
 
 	if (verbosity >= 5) {
@@ -513,7 +574,6 @@ static void parse_satellite_delivery_system_descriptor (const unsigned char *buf
 		dprintf(5, "\n");
 	}
 }
-
 
 static void parse_terrestrial_delivery_system_descriptor (const unsigned char *buf, struct transponder *t)
 {
@@ -715,8 +775,8 @@ static void parse_descriptors(enum table_type t, const unsigned char *buf,
 							  int descriptors_loop_len, void *data)
 {
 	while (descriptors_loop_len > 0) {
-		unsigned char descriptor_tag = buf[0];
-		unsigned char descriptor_len = buf[1] + 2;
+		unsigned char descriptor_tag = getBits(buf, 0, 8);
+		unsigned char descriptor_len = getBits(buf, 8, 8) + 2;
 
 		if (!descriptor_len) {
 			warning("descriptor_tag == 0x%02X, len is 0\n", descriptor_tag);
@@ -794,7 +854,7 @@ static void parse_descriptors(enum table_type t, const unsigned char *buf,
 }
 
 
-static void parse_pat(const unsigned char *buf, int section_length,
+static void parse_pat(struct section_buf *sb, const unsigned char *buf, int section_length,
 					  int transport_stream_id)
 {
 	(void)transport_stream_id;
@@ -816,7 +876,7 @@ static void parse_pat(const unsigned char *buf, int section_length,
 		if (!s->priv && s->pmt_pid) {
 			s->priv = malloc(sizeof(struct section_buf));
 			setup_filter(s->priv, demux_devname,
-				s->pmt_pid, 0x02, s->service_id, 1, 0, 5);
+				s->pmt_pid, TID_PMT, s->service_id, 1, 0, 5);
 
 			add_filter (s->priv);
 		}
@@ -828,7 +888,7 @@ skip:
 }
 
 
-static void parse_pmt (const unsigned char *buf, int section_length, int service_id)
+static void parse_pmt (struct section_buf *sb, const unsigned char *buf, int section_length, int service_id)
 {
 	int program_info_len;
 	struct service *s;
@@ -937,11 +997,18 @@ static void parse_pmt (const unsigned char *buf, int section_length, int service
 }
 
 
-static void parse_nit (const unsigned char *buf, int section_length, int network_id)
+static void parse_nit (struct section_buf *sb, const unsigned char *buf, int section_length, int network_id)
 {
-	int descriptors_loop_len = ((buf[0] & 0x0f) << 8) | buf[1];
+	// Update known parameters for current transponder
+	if(sb->table_id == TID_NIT_ACTUAL) {
+		current_tp->network_id = network_id;
+	}
 
-	if (section_length < descriptors_loop_len + 4)
+	// Buffer doesn't include all common fields up to last_section_number
+	int descriptors_loop_len = getBits(buf, 4, 12);
+
+	// section length doesn't have all common fields and CRC
+	if (section_length < descriptors_loop_len + 2)
 	{
 		warning("section too short: network_id == 0x%04X, section_length == %i, "
 			"descriptors_loop_len == %i\n",
@@ -951,27 +1018,49 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 
 	parse_descriptors (NIT, buf + 2, descriptors_loop_len, NULL);
 
-	section_length -= descriptors_loop_len + 4;
-	buf += descriptors_loop_len + 4;
+	// advance buffer to skip descriptors
+	section_length -= (descriptors_loop_len + 2);
+	buf += (descriptors_loop_len + 2);
 
-	while (section_length > 6) {
-		int transport_stream_id = (buf[0] << 8) | buf[1];
+	int streams_loop_len = getBits(buf, 4, 12);
+	if (section_length < streams_loop_len + 2)
+	{
+		warning("section too short: network_id == 0x%04X, section_length == %i, "
+			"steams_loop_len == %i\n",
+			network_id, section_length, streams_loop_len);
+		return;
+	}
+
+	// section_length doesn't include all the descriptors and header
+	// advance to skip the loop length
+	buf += 2;
+
+	while (streams_loop_len > 6) {
+		int transport_stream_id = getBits(buf, 0, 16);
+
 		struct transponder *t, tn;
 
-		descriptors_loop_len = ((buf[4] & 0x0f) << 8) | buf[5];
+		descriptors_loop_len = getBits(buf, 36, 12);
 
-		if (section_length < descriptors_loop_len + 4)
+		// sream_loop_length include also
+		// transport_stream_id		: 16 bit
+		// original_network_id		: 16 bit
+		// reserved					: 4 bit
+		// transport_descriptors_len: 12 bit
+		//-----------------------------------
+		// total					: 48 bit = 6 byte
+		if (streams_loop_len < descriptors_loop_len + 6)
 		{
 			warning("section too short: transport_stream_id == 0x%04X, "
-				"section_length == %i, descriptors_loop_len == %i\n",
-				transport_stream_id, section_length,
+				"stream_loop_len == %i, streams descriptors_loop_len == %i\n",
+				transport_stream_id, streams_loop_len,
 				descriptors_loop_len);
 			break;
 		}
 
 		memset(&tn, 0, sizeof(tn));
 		tn.network_id = network_id;
-		tn.original_network_id = (buf[2] << 8) | buf[3];
+		tn.original_network_id = getBits(buf, 16, 16);
 		tn.transport_stream_id = transport_stream_id;
 		tn.fec = FEC_AUTO;
 		tn.inversion = spectral_inversion;
@@ -981,7 +1070,7 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 		parse_descriptors (NIT, buf + 6, descriptors_loop_len, &tn);
 
 		t = find_transponder(tn.frequency, tn.polarisation);
-		
+
 		if (t == NULL) {
 			if(get_other_nits) {
 				// New DVB-S transponder
@@ -1005,22 +1094,29 @@ static void parse_nit (const unsigned char *buf, int section_length, int network
 			copy_transponder(t, &tn);
 		}
 
-		section_length -= descriptors_loop_len + 6;
-		buf += descriptors_loop_len + 6;
+		streams_loop_len -= (descriptors_loop_len + 6);
+		buf += (descriptors_loop_len + 6);
 	}
 }
 
 
-static void parse_sdt (const unsigned char *buf, int section_length,
+static void parse_sdt (struct section_buf *sb, const unsigned char *buf, int section_length,
 					   int transport_stream_id)
 {
-	(void)transport_stream_id;
+	// buf doesn't include all common fields up to last_section_number
+	// section length doesn't have all common fields and CRC
 
+	if(sb->table_id == TID_SDT_ACTUAL) {
+		// update current transporter
+		current_tp->transport_stream_id = transport_stream_id;
+		current_tp->original_network_id = getBits(buf, 0, 16);
+	}
+	
 	buf += 3;	       /*  skip original network id + reserved field */
 
 	while (section_length >= 5) {
-		int service_id = (buf[0] << 8) | buf[1];
-		int descriptors_loop_len = ((buf[3] & 0x0f) << 8) | buf[4];
+		int service_id = getBits(buf, 0, 16);
+		int descriptors_loop_len = getBits(buf, 28, 12);
 		struct service *s;
 
 		if (section_length < descriptors_loop_len || !descriptors_loop_len)
@@ -1037,13 +1133,13 @@ static void parse_sdt (const unsigned char *buf, int section_length,
 			/* maybe PAT has not yet been parsed... */
 			s = alloc_service(current_tp, service_id);
 
-		s->running = (buf[3] >> 5) & 0x7;
-		s->scrambled = (buf[3] >> 4) & 1;
+		s->running = getBits(buf, 24, 3);
+		s->scrambled = getBits(buf, 27, 1);
 
 		parse_descriptors (SDT, buf + 5, descriptors_loop_len, s);
 
-		section_length -= descriptors_loop_len + 5;
-		buf += descriptors_loop_len + 5;
+		section_length -= (descriptors_loop_len + 5);
+		buf += (descriptors_loop_len + 5);
 	};
 }
 
@@ -1143,7 +1239,7 @@ static void parse_psip_descriptors(struct service *s,const unsigned char *buf,in
 	}
 }
 
-static void parse_psip_vct (const unsigned char *buf, int section_length,
+static void parse_psip_vct (struct section_buf *sb, const unsigned char *buf, int section_length,
 							int table_id, int transport_stream_id)
 {
 	(void)section_length;
@@ -1230,9 +1326,8 @@ static void set_bit (uint8_t *bitfield, int bit)
 *	   1 when all sections are read on this pid
 *	   -1 on invalid table id
 */
-static int parse_section (struct section_buf *s)
+static int parse_section(struct section_buf *sb, unsigned char *buf)
 {
-	const unsigned char *buf = s->buf;
 	int table_id;
 	int section_length;
 	int table_id_ext;
@@ -1241,107 +1336,108 @@ static int parse_section (struct section_buf *s)
 	int last_section_number;
 	int i;
 
-	table_id = buf[0];
+	table_id = getBits(buf, 0, 8);
 
-	if (s->table_id != table_id) {
-		info(">>> s->table_id (%X) != table_id (%X)!\n", s->table_id, table_id);
+	if (sb->table_id != table_id) {
+		info(">>> sb->table_id (%X) != table_id (%X)!\n", sb->table_id, table_id);
 		return -1;
 	}
 
-	section_length = ((buf[1] & 0x0f) << 8) | buf[2];
+	section_length = getBits(buf, 12, 12);
 
-	table_id_ext = (buf[3] << 8) | buf[4];
-	section_version_number = (buf[5] >> 1) & 0x1f;
-	section_number = buf[6];
-	last_section_number = buf[7];
+	table_id_ext = getBits(buf, 24, 16);
+	section_version_number = getBits(buf, 42, 5);
+	section_number = getBits(buf, 48, 8);
+	last_section_number = getBits(buf, 56, 8);
 
 	info(">>> parse_section, section number %d out of %d...!\n", section_number, last_section_number);
 
-	if (s->segmented && s->table_id_ext != -1 && s->table_id_ext != table_id_ext) {
+	if (sb->segmented && sb->table_id_ext != -1 && sb->table_id_ext != table_id_ext) {
 		/* find or allocate actual section_buf matching table_id_ext */
-		while (s->next_seg) {
-			s = s->next_seg;
-			if (s->table_id_ext == table_id_ext)
+		while (sb->next_seg) {
+			sb = sb->next_seg;
+			if (sb->table_id_ext == table_id_ext)
 				break;
 		}
-		if (s->table_id_ext != table_id_ext) {
-			assert(s->next_seg == NULL);
-			s->next_seg = calloc(1, sizeof(struct section_buf));
-			s->next_seg->segmented = s->segmented;
-			s->next_seg->run_once = s->run_once;
-			s->next_seg->timeout = s->timeout;
-			s = s->next_seg;
-			s->table_id = table_id;
-			s->table_id_ext = table_id_ext;
-			s->section_version_number = section_version_number;
+		if (sb->table_id_ext != table_id_ext) {
+			assert(sb->next_seg == NULL);
+			sb->next_seg = calloc(1, sizeof(struct section_buf));
+			sb->next_seg->segmented = sb->segmented;
+			sb->next_seg->run_once = sb->run_once;
+			sb->next_seg->timeout = sb->timeout;
+			sb = sb->next_seg;
+			sb->table_id = table_id;
+			sb->table_id_ext = table_id_ext;
+			sb->section_version_number = section_version_number;
 		}
 	}
 
-	if (s->section_version_number != section_version_number || s->table_id_ext != table_id_ext) {
-		struct section_buf *next_seg = s->next_seg;
+	if (sb->section_version_number != section_version_number || sb->table_id_ext != table_id_ext) {
+		struct section_buf *next_seg = sb->next_seg;
 
-		if (s->section_version_number != -1 && s->table_id_ext != -1) {
+		if (sb->section_version_number != -1 && sb->table_id_ext != -1) {
 			debug("section version_number or table_id_ext changed "
 				"%d -> %d / %04x -> %04x\n",
-				s->section_version_number, section_version_number,
-				s->table_id_ext, table_id_ext);
+				sb->section_version_number, section_version_number,
+				sb->table_id_ext, table_id_ext);
 		}
 
-		s->table_id_ext = table_id_ext;
-		s->section_version_number = section_version_number;
-		s->sectionfilter_done = 0;
-		memset (s->section_done, 0, sizeof(s->section_done));
-		s->next_seg = next_seg;
+		sb->table_id_ext = table_id_ext;
+		sb->section_version_number = section_version_number;
+		sb->sectionfilter_done = 0;
+		memset (sb->section_done, 0, sizeof(sb->section_done));
+		sb->next_seg = next_seg;
 	}
 
 	buf += 8;			/* past generic table header */
-	section_length -= 5 + 4;	/* header + crc */
+	section_length -= CRC_LEN;	// Reduce CRC
+	section_length -= 5;		// Reduce common part of the messages up to last_section_number
 	if (section_length < 0) {
 		warning("truncated section (PID 0x%04X, lenght %d)",
-			s->pid, section_length + 9);
+			sb->pid, section_length + CRC_LEN);
 		return 0;
 	}
 
-	if (!get_bit(s->section_done, section_number)) {
-		set_bit (s->section_done, section_number);
+	if (!get_bit(sb->section_done, section_number)) {
+		set_bit (sb->section_done, section_number);
 
 		debug("pid 0x%02X tid 0x%02X table_id_ext 0x%04X, "
 			"%i/%i (version %i)\n",
-			s->pid, table_id, table_id_ext, section_number,
+			sb->pid, table_id, table_id_ext, section_number,
 			last_section_number, section_version_number);
 
 		switch (table_id) 
 		{
-		case 0x00:
+		case TID_PAT:
 			verbose("PAT\n");
-			parse_pat (buf, section_length, table_id_ext);
+			parse_pat (sb, buf, section_length, table_id_ext);
 			break;
 
-		case 0x02:
-			verbose("PMT 0x%04X for service 0x%04X\n", s->pid, table_id_ext);
-			parse_pmt (buf, section_length, table_id_ext);
+		case TID_PMT:
+			verbose("PMT 0x%04X for service 0x%04X\n", sb->pid, table_id_ext);
+			parse_pmt (sb, buf, section_length, table_id_ext);
 			break;
 
-		case 0x41:
+		case TID_NIT_OTHER:
 			verbose("NIT (other TS)\n");
-			parse_nit (buf, section_length, table_id_ext);
+			parse_nit (sb, buf, section_length, table_id_ext);
 			break;
 
-		case 0x40:
+		case TID_NIT_ACTUAL:
 			verbose("NIT (actual TS)\n");
-			parse_nit (buf, section_length, table_id_ext);
+			parse_nit (sb, buf, section_length, table_id_ext);
 			break;
 
-		case 0x42:
-		case 0x46:
+		case TID_SDT_ACTUAL:
+		case TID_SDT_OTHER:
 			verbose("SDT (%s TS)\n", table_id == 0x42 ? "actual":"other");
-			parse_sdt (buf, section_length, table_id_ext);
+			parse_sdt (sb, buf, section_length, table_id_ext);
 			break;
 
-		case 0xc8:
-		case 0xc9:
+		case TID_ATSC_CVT1:
+		case TID_ATSC_CVT2:
 			verbose("ATSC VCT\n");
-			parse_psip_vct(buf, section_length, table_id, table_id_ext);
+			parse_psip_vct(sb, buf, section_length, table_id, table_id_ext);
 			break;
 
 		default:
@@ -1349,63 +1445,75 @@ static int parse_section (struct section_buf *s)
 		};
 
 		for (i = 0; i <= last_section_number; i++)
-			if (get_bit (s->section_done, i) == 0)
+			if (get_bit (sb->section_done, i) == 0)
 				break;
 
 		if (i > last_section_number)
-			s->sectionfilter_done = 1;
+			sb->sectionfilter_done = 1;
 	}
 
-	if (s->segmented) {
+	if (sb->segmented) {
 		/* always wait for timeout; this is because we don't now how
 		* many segments there are
 		*/
 		return 0;
 	}
-	else if (s->sectionfilter_done)
+	else if (sb->sectionfilter_done)
 		return 1;
 
 	return 0;
 }
 
-
-static int read_sections (struct section_buf *s)
+static int read_sections (struct section_buf *sb)
 {
+	unsigned char buffer[4096];	// CAT can be up to 4K, the rest are 1K max
 	int section_length, count;
 
-	if (s->sectionfilter_done && !s->segmented)
+	if (sb->sectionfilter_done && !sb->segmented)
 		return 1;
+
+	memset(buffer, 0, sizeof(buffer));
 
 	/* the section filter API guarantess that we get one full section
 	* per read(), provided that the buffer is large enough (it is)
 	*/
-	if (((count = read (s->fd, s->buf, sizeof(s->buf))) < 0) && errno == EOVERFLOW)
-		count = read (s->fd, s->buf, sizeof(s->buf));
+	if (((count = read (sb->fd, buffer, sizeof(buffer))) < 0) && errno == EOVERFLOW)
+		count = read (sb->fd, buffer, sizeof(buffer));
 	if (count < 0) {
 		errorn("read_sections: read error");
 		return -1;
 	}
 
-	if(s->skip_count > 0) {
-		info("skipping section, table_id %X, pid %X\n", s->table_id, s->pid);
-		s->skip_count--;
+	if(sb->skip_count > 0) {
+		info("skipping section, table_id %X, pid %X\n", sb->table_id, sb->pid);
+		sb->skip_count--;
 		return -1;
 	}
 
 	if (count < 4)
 		return -1;
 
-	section_length = ((s->buf[1] & 0x0f) << 8) | s->buf[2];
+	section_length = getBits(buffer, 12, 12);
 
-	if (count != section_length + 3)
+	if (count != section_length + 3) {
+		error("Ignoring section, read %d, while section length + 3 = %d\n", count, section_length + 3);
 		return -1;
+	}
 
-	if (parse_section(s) == 1)
+	int i;
+	for(i=0; i<count; i++) {
+		debug("0x%02X ", buffer[i]);
+		if((i+1)%10 == 0) {
+			verbosedebug("\n");
+		}
+	}
+	debug("\n");
+
+	if (parse_section(sb, buffer) == 1)
 		return 1;
 
 	return 0;
 }
-
 
 static LIST_HEAD(running_filters);
 static LIST_HEAD(waiting_filters);
@@ -1416,7 +1524,7 @@ static struct section_buf* poll_section_bufs[MAX_RUNNING];
 
 
 static void setup_filter (struct section_buf* s, const char *dmx_devname,
-						  int pid, int tid, int tid_ext,
+						  enum pid pid, enum table_id tid, int tid_ext,
 						  int run_once, int segmented, int timeout)
 {
 	memset (s, 0, sizeof(struct section_buf));
@@ -1561,7 +1669,7 @@ static void remove_filter (struct section_buf *s)
 
 static void read_filters (void)
 {
-	struct section_buf *s;
+	struct section_buf *sb;
 	int i, n, done;
 
 	n = poll(poll_fds, n_running, 1000);
@@ -1569,20 +1677,20 @@ static void read_filters (void)
 		errorn("poll");
 
 	for (i = 0; i < n_running; i++) {
-		s = poll_section_bufs[i];
-		if (!s)
+		sb = poll_section_bufs[i];
+		if (!sb)
 			fatal("poll_section_bufs[%d] is NULL\n", i);
 		if (poll_fds[i].revents)
-			done = read_sections (s) == 1;
+			done = read_sections (sb) == 1;
 		else
 			done = 0; /* timeout */
-		if (done || time(NULL) > s->start_time + s->timeout) {
-			if (s->run_once) {
+		if (done || time(NULL) > sb->start_time + sb->timeout) {
+			if (sb->run_once) {
 				if (done)
-					verbosedebug("filter done pid 0x%04X\n", s->pid);
+					verbosedebug("filter done pid 0x%04X\n", sb->pid);
 				else
-					warning("filter timeout pid 0x%04X\n", s->pid);
-				remove_filter (s);
+					warning("filter timeout pid 0x%04X\n", sb->pid);
+				remove_filter (sb);
 			}
 		}
 	}
@@ -1661,9 +1769,9 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			if (t->orbital_pos!=0) rotor_pos = rotor_nn(t->orbital_pos, t->we_flag);
 			int err;
 			err = rotate_rotor(	frontend_fd,
-						curr_rotor_pos, 
-						rotor_pos,
-						t->polarisation == POLARISATION_VERTICAL ? 0 : 1);
+				curr_rotor_pos, 
+				rotor_pos,
+				t->polarisation == POLARISATION_VERTICAL ? 0 : 1);
 			if (err)
 				error("Error in rotate_rotor err=%i\n",err); 
 			else
@@ -2150,7 +2258,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 				/* Enable only DVB-S mode */
 				if (!disable_s1) scan_mode1 = TRUE;
 				break;
-				
+
 			case '2':
 				/* Enable only DVB-S2 mode */
 				if (!disable_s2) scan_mode2 = TRUE;
@@ -2164,7 +2272,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 			}
 
 			/*Generate a list of transponders, explicitly enumerating the AUTOs if they
-  			  are disabled with the -X parameter.*/
+			are disabled with the -X parameter.*/
 
 			int nmod,nfec,ndel,nrol;
 			int imod,ifec,idel,irol;
@@ -2209,39 +2317,42 @@ static int tune_initial (int frontend_fd, const char *initial)
 			}
 
 			for (idel=0;idel<ndel;idel++){
-			for (ifec=0;ifec<nfec;ifec++){
-			for (irol=0;irol<nrol;irol++){
-			for (imod=0;imod<nmod;imod++){
-				/*skip impossible settings*/
-				if ((rolset[irol]==ROLLOFF_25||rolset[irol]==ROLLOFF_20) && delset[idel]!=SYS_DVBS2) continue;
-				if (ifec > 5 && delset[idel]!=SYS_DVBS2) continue;
-				if (modset[imod] == PSK_8 && delset[idel] != SYS_DVBS2) continue;
+				for (ifec=0;ifec<nfec;ifec++){
+					for (irol=0;irol<nrol;irol++){
+						for (imod=0;imod<nmod;imod++){
+							/*skip impossible settings*/
+							if ((rolset[irol]==ROLLOFF_25||rolset[irol]==ROLLOFF_20) && delset[idel]!=SYS_DVBS2) continue;
+							if (ifec > 5 && delset[idel]!=SYS_DVBS2) continue;
+							if (modset[imod] == PSK_8 && delset[idel] != SYS_DVBS2) continue;
 
-				t = alloc_transponder(f);
+							t = alloc_transponder(f);
 
-				t->delivery_system = delset[idel];
-				t->modulation = modset[imod];
-				t->rolloff = rolset[irol];
-				t->fec = fecset[ifec];
+							t->delivery_system = delset[idel];
+							t->modulation = modset[imod];
+							t->rolloff = rolset[irol];
+							t->fec = fecset[ifec];
 
-				switch(pol[0]) 
-				{
-				case 'H':
-				case 'L':
-					t->polarisation = POLARISATION_HORIZONTAL;
-					break;
-				default:
-					t->polarisation = POLARISATION_VERTICAL;;
-					break;
+							switch(pol[0]) 
+							{
+							case 'H':
+							case 'L':
+								t->polarisation = POLARISATION_HORIZONTAL;
+								break;
+							default:
+								t->polarisation = POLARISATION_VERTICAL;;
+								break;
+							}
+							t->inversion = spectral_inversion;
+							t->symbol_rate = sr;
+
+							info("initial transponder DVB-S%s %u %c %d %s %s %s\n",
+								t->delivery_system==SYS_DVBS?" ":"2",
+								t->frequency,
+								pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
+						}
+					}
 				}
-				t->inversion = spectral_inversion;
-				t->symbol_rate = sr;
-
-				info("initial transponder DVB-S%s %u %c %d %s %s %s\n",
-					t->delivery_system==SYS_DVBS?" ":"2",
-					t->frequency,
-					pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
-			}}}}
+			}
 		}
 		else if (sscanf(buf, "C %u %u %4s %6s\n", &f, &sr, fec, qam) >= 2) {
 			t = alloc_transponder(f);
@@ -2347,18 +2458,18 @@ static void scan_tp_atsc(void)
 	struct section_buf s0,s1,s2;
 
 	if (no_ATSC_PSIP) {
-		setup_filter(&s0, demux_devname, 0x00, 0x00, -1, 1, 0, 5); /* PAT */
+		setup_filter(&s0, demux_devname, PID_PAT, TID_PAT, -1, 1, 0, 5); /* PAT */
 		add_filter(&s0);
 	} else {
 		if (ATSC_type & 0x1) {
-			setup_filter(&s0, demux_devname, 0x1ffb, 0xc8, -1, 1, 0, 5); /* terrestrial VCT */
+			setup_filter(&s0, demux_devname, 0x1ffb, TID_ATSC_CVT1, -1, 1, 0, 5); /* terrestrial VCT */
 			add_filter(&s0);
 		}
 		if (ATSC_type & 0x2) {
-			setup_filter(&s1, demux_devname, 0x1ffb, 0xc9, -1, 1, 0, 5); /* cable VCT */
+			setup_filter(&s1, demux_devname, 0x1ffb, TID_ATSC_CVT2, -1, 1, 0, 5); /* cable VCT */
 			add_filter(&s1);
 		}
-		setup_filter(&s2, demux_devname, 0x00, 0x00, -1, 1, 0, 5); /* PAT */
+		setup_filter(&s2, demux_devname, PID_PAT, TID_PAT, -1, 1, 0, 5); /* PAT */
 		add_filter(&s2);
 	}
 
@@ -2378,21 +2489,21 @@ static void scan_tp_dvb (void)
 	/**
 	*  filter timeouts > min repetition rates specified in ETR211
 	*/
-	setup_filter (&s0, demux_devname, 0x00, 0x00, -1, 1, 0, 5); /* PAT */
-	setup_filter (&s1, demux_devname, 0x11, 0x42, -1, 1, 0, 5); /* SDT */
+	setup_filter (&s0, demux_devname, PID_PAT, TID_PAT, -1, 1, 0, 5); /* PAT */
+	setup_filter (&s1, demux_devname, PID_SDT_BAT_ST, TID_SDT_ACTUAL, -1, 1, 0, 5); /* SDT */
 
 	add_filter (&s0);
 	add_filter (&s1);
 
 	if (!current_tp_only) {
-		setup_filter (&s2, demux_devname, 0x10, 0x40, -1, 1, 0, 15); /* NIT */
+		setup_filter (&s2, demux_devname, PID_NIT_ST, TID_NIT_ACTUAL, -1, 1, 0, 15); /* NIT */
 		add_filter (&s2);
 		if (get_other_nits) {
 			/* get NIT-others
 			* Note: There is more than one NIT-other: one per
 			* network, separated by the network_id.
 			*/
-			setup_filter (&s3, demux_devname, 0x10, 0x41, -1, 1, 1, 15);
+			setup_filter (&s3, demux_devname, PID_NIT_ST, TID_NIT_OTHER, -1, 1, 1, 15);
 			add_filter (&s3);
 		}
 	}
@@ -2741,7 +2852,7 @@ int main (int argc, char **argv)
 
 		case 'R':
 			rotor_pos = strtoul(optarg, NULL, 0);
- 			break;
+			break;
 
 		case 'O':
 			strncpy(override_orbital_pos, optarg, sizeof(override_orbital_pos)-1);

@@ -222,9 +222,7 @@ void vdr_dump_service_parameter_set (FILE *f, service_t *s, transponder_t *t, ch
 			fprintf (f, "%d", ca_select);
 		}
 
-		fprintf (f, ":%d:%d:%d:0", s->service_id, 
-			(t->transport_stream_id > 0)?t->network_id:0,
-			t->transport_stream_id);
+		fprintf (f, ":%d:%d:%d:0", s->service_id, t->original_network_id, t->transport_stream_id);
 
 		fprintf (f, "\n");
 	}

@@ -28,7 +28,7 @@ extern int verbosity;
 #define info(msg...) dprintf(2, msg)
 #define verbose(msg...) dprintf(3, msg)
 #define moreverbose(msg...) dprintf(4, msg)
-#define debug(msg...) dpprintf(5, msg)
+#define debug(msg...) dprintf(5, msg)
 #define verbosedebug(msg...) dpprintf(6, msg)
 
 

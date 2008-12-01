@@ -2636,7 +2636,7 @@ static void dump_lists (void)
 				continue; /* no data/other services */
 			}
 
-			if (s->scrambled && ca_select>0)
+			if (s->scrambled && ca_select==0)
 				continue; /* FTA only */
 
 			switch (output_format)

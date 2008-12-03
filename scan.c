@@ -1081,6 +1081,7 @@ static void parse_nit (struct section_buf *sb, const unsigned char *buf, int sec
 					tn.delivery_system = SYS_DVBS;
 					copy_transponder(t, &tn);
 
+					t = alloc_transponder(tn.frequency);
 					tn.delivery_system = SYS_DVBS2;
 					copy_transponder(t, &tn);
 				}
@@ -1794,6 +1795,15 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		if (verbosity >= 2){
 			dprintf(1,"DVB-T frequency is %d\n", if_freq);
 			dprintf(1,"DVB-T bandwidth is %d\n", bandwidth_hz);
+		}
+		break;
+
+	case SYS_DVBC_ANNEX_B:
+	case SYS_DVBC_ANNEX_AC:
+		if_freq = t->frequency;
+
+		if (verbosity >= 2){
+			dprintf(1,"DVB-C frequency is %d\n", if_freq);
 		}
 		break;
 	}
@@ -2986,7 +2996,44 @@ int main (int argc, char **argv)
 	signal(SIGINT, handle_sigint);
 
 	if (current_tp_only) {
-		current_tp = alloc_transponder(0); /* dummy */
+		struct dtv_property p[] = {
+			{ .cmd = DTV_FREQUENCY },
+			{ .cmd = DTV_DELIVERY_SYSTEM },
+			{ .cmd = DTV_MODULATION },
+			{ .cmd = DTV_SYMBOL_RATE },
+			{ .cmd = DTV_INNER_FEC },
+			{ .cmd = DTV_INVERSION },
+			{ .cmd = DTV_ROLLOFF },
+			{ .cmd = DTV_BANDWIDTH_HZ },
+		};
+
+		struct dtv_properties cmdseq = {
+			.num = 8,
+			.props = p
+		};
+
+		/* query for currently tuned parameters */
+		if ((ioctl(frontend_fd, FE_GET_PROPERTY, &cmdseq)) == -1) {
+			perror("FE_GET_PROPERTY failed");
+			return;
+		}
+		current_tp = alloc_transponder(p[0].u.data);
+		current_tp->delivery_system = p[1].u.data;
+		current_tp->modulation = p[2].u.data;
+		current_tp->symbol_rate = p[3].u.data;
+		current_tp->fec = p[4].u.data;
+		current_tp->inversion = p[5].u.data;
+		current_tp->rolloff = p[6].u.data;
+
+		switch(p[6].u.data) 
+		{
+		case 6000000: current_tp->bandwidth = BANDWIDTH_6_MHZ; break;
+		case 7000000: current_tp->bandwidth = BANDWIDTH_7_MHZ; break;
+		case 8000000: current_tp->bandwidth = BANDWIDTH_8_MHZ; break;
+		default:
+		case 0:	current_tp->bandwidth = BANDWIDTH_AUTO; break;
+		}
+
 		/* move TP from "new" to "scanned" list */
 		list_del_init(&current_tp->list);
 		list_add_tail(&current_tp->list, &scanned_transponders);

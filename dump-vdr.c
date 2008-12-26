@@ -77,12 +77,6 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 		case SYS_DVBS2:
 			fprintf (f, "%i:", t->frequency / 1000);
 			fprintf (f, "%c", sat_polarisation(t));
-			if(t->delivery_system == SYS_DVBS) {
-				fprintf (f, "S0");
-			}
-			else {
-				fprintf (f, "S1");
-			}
 
 			switch(t->fec) 
 			{
@@ -120,7 +114,14 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 			case ROLLOFF_25: fprintf(f, "O25"); break;
 			case ROLLOFF_35: fprintf(f, "O35"); break;
 			}
-			
+
+			if(t->delivery_system == SYS_DVBS) {
+				fprintf (f, "S0");
+			}
+			else {
+				fprintf (f, "S1");
+			}
+		
 			fprintf(f, ":");
 
 			if(strlen(orbital_pos_override) > 0) {

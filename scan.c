@@ -296,7 +296,7 @@ static void remove_duplicate_transponder(struct transponder *t)
 	}
 }
 
-static void copy_transponder(struct transponder *d, struct transponder *s)
+static void copy_transponder(struct transponder *d, struct transponder *s, int isOverride)
 {
 	d->network_id = s->network_id;
 	d->original_network_id = s->original_network_id;
@@ -304,15 +304,33 @@ static void copy_transponder(struct transponder *d, struct transponder *s)
 	d->frequency = s->frequency;
 	d->symbol_rate = s->symbol_rate;
 	d->inversion = s->inversion;
-	d->rolloff = s->rolloff;
-	d->fec = s->fec;
-	d->fecHP = s->fecHP;
-	d->fecLP = s->fecLP;
-	d->modulation = s->modulation;
-	d->bandwidth = s->bandwidth;
-	d->hierarchy = s->hierarchy;
-	d->guard_interval = s->guard_interval;
-	d->transmission_mode = s->transmission_mode;
+	if(isOverride || d->rolloff == ROLLOFF_AUTO) {
+		d->rolloff = s->rolloff;
+	}
+	if(isOverride || d->fec == FEC_AUTO) {
+		d->fec = s->fec;
+	}
+	if(isOverride || d->fecHP == FEC_AUTO) {
+		d->fecHP = s->fecHP;
+	}
+	if(isOverride || d->fecLP == FEC_AUTO) {
+		d->fecLP = s->fecLP;
+	}
+	if(isOverride || d->modulation == QAM_AUTO) {
+		d->modulation = s->modulation;
+	}
+	if(isOverride || d->bandwidth == BANDWIDTH_AUTO) {
+		d->bandwidth = s->bandwidth;
+	}
+	if(isOverride || d->hierarchy == HIERARCHY_AUTO) {
+		d->hierarchy = s->hierarchy;
+	}
+	if(isOverride || d->guard_interval == GUARD_INTERVAL_AUTO) {
+		d->guard_interval = s->guard_interval;
+	}
+	if(isOverride || d->transmission_mode == TRANSMISSION_MODE_AUTO) {
+		d->transmission_mode = s->transmission_mode;
+	}
 	d->polarisation = s->polarisation;
 	d->orbital_pos = s->orbital_pos;
 	d->delivery_system = s->delivery_system;
@@ -1073,26 +1091,26 @@ static void parse_nit (struct section_buf *sb, const unsigned char *buf, int sec
 
 		if (t == NULL) {
 			if(get_other_nits) {
-				// New DVB-S transponder
+				// New transponder
 				t = alloc_transponder(tn.frequency);
 
 				// For sattelites add both DVB-S and DVB-S2 transopnders since we don't know what should be used
 				if(current_tp->delivery_system == SYS_DVBS || current_tp->delivery_system == SYS_DVBS2) {
 					tn.delivery_system = SYS_DVBS;
-					copy_transponder(t, &tn);
+					copy_transponder(t, &tn, TRUE);
 
 					t = alloc_transponder(tn.frequency);
 					tn.delivery_system = SYS_DVBS2;
-					copy_transponder(t, &tn);
+					copy_transponder(t, &tn, TRUE);
 				}
 				else {
-					copy_transponder(t, &tn);
+					copy_transponder(t, &tn, TRUE);
 				}
 			}
 		}
 		else {
-			// Trasponder exist, update transponder info.
-			copy_transponder(t, &tn);
+			// Trasponder exist, update transponder info, don't override known values
+			copy_transponder(t, &tn, FALSE);
 		}
 
 		streams_loop_len -= (descriptors_loop_len + 6);
@@ -1976,7 +1994,7 @@ next:
 			INIT_LIST_HEAD(&to->list);
 			INIT_LIST_HEAD(&to->services);
 			list_add_tail(&to->list, &scanned_transponders);
-			copy_transponder(to, t);
+			copy_transponder(to, t, FALSE);
 
 			t->frequency = freq;
 			info("retrying with f=%d\n", t->frequency);

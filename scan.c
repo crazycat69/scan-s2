@@ -1094,7 +1094,7 @@ static void parse_nit (struct section_buf *sb, const unsigned char *buf, int sec
 				// New transponder
 				t = alloc_transponder(tn.frequency);
 
-				// For sattelites add both DVB-S and DVB-S2 transopnders since we don't know what should be used
+				// For satellites add both DVB-S and DVB-S2 transponders since we don't know what should be used
 				if(current_tp->delivery_system == SYS_DVBS || current_tp->delivery_system == SYS_DVBS2) {
 					tn.delivery_system = SYS_DVBS;
 					copy_transponder(t, &tn, TRUE);
@@ -1723,6 +1723,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 	uint32_t if_freq = 0;
 	uint32_t bandwidth_hz = 0;
 	current_tp = t;
+	int hiband = 0;
 
 	struct dtv_property p_clear[] = {
 		{ .cmd = DTV_CLEAR },
@@ -1753,7 +1754,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		if (lnb_type.high_val) {
 			if (lnb_type.switch_val) {
 				/* Voltage-controlled switch */
-				int hiband = 0;
+				hiband = 0;
 
 				if (t->frequency >= lnb_type.switch_val)
 					hiband = 1;
@@ -1788,9 +1789,10 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			if (t->orbital_pos!=0) rotor_pos = rotor_nn(t->orbital_pos, t->we_flag);
 			int err;
 			err = rotate_rotor(	frontend_fd,
-				curr_rotor_pos, 
-				rotor_pos,
-				t->polarisation == POLARISATION_VERTICAL ? 0 : 1);
+						curr_rotor_pos, 
+						rotor_pos,
+						t->polarisation == POLARISATION_VERTICAL ? 0 : 1,
+						hiband);
 			if (err)
 				error("Error in rotate_rotor err=%i\n",err); 
 			else
@@ -1843,7 +1845,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		.num = 10,
 		.props = p_tune
 	};
-
+	
 	/* discard stale QPSK events */
 	while (1) {
 		if (ioctl(frontend_fd, FE_GET_EVENT, &ev) == -1)
@@ -2748,8 +2750,8 @@ static const char *usage = "\n"
 "	-5	multiply all filter timeouts by factor 5\n"
 "		for non-DVB-compliant section repitition rates\n"
 "	-O pos	Orbital position override 'S4W', 'S19.2E' - good for VDR output\n"
-"	-k cnt	Skip count, will skip every first specified\n"
-"		messages for every message type (default 0)\n"
+"	-k cnt	Skip count: skip the first cnt \n"
+"		messages of each message type (default 0)\n"
 "	-I cnt	Scan iterations count (default 10).\n"
 "		Larger number will make scan longer on every channel\n"
 "	-o fmt	output format: 'vdr' (default) or 'zap'\n"

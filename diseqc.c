@@ -77,7 +77,15 @@ int rotor_command( int frontend_fd, int cmd, int n1, int n2, int n3 )
 	return err;
 }
 
-int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int voltage_18){
+static inline void msleep(uint32_t msec)
+{
+	struct timespec req = { msec / 1000, 1000000 * (msec % 1000) };
+
+	while (nanosleep(&req, &req))
+		;
+}
+
+int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int voltage_18, int hiband){
 	/* Rotate a DiSEqC 1.2 rotor from position from_rotor_pos to position to_rotor_pos */
 	/* Uses Goto nn (command 9) */
 	float rotor_wait_time; //seconds
@@ -97,8 +105,17 @@ int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int vol
 				a2 = rotor_angle(from_rotor_pos);
 				degreesmoved = abs(a1-a2);
 				if (degreesmoved>180) degreesmoved=360-degreesmoved;
-				rotor_wait_time = degreesmoved / (voltage_18 ? speed_18V : speed_13V);
+				rotor_wait_time = degreesmoved / speed_18V;
 			}
+
+			//switch tone off
+			if (err = ioctl(frontend_fd, FE_SET_TONE, SEC_TONE_OFF))
+				return err;
+			msleep(15);
+			// high voltage for high speed rotation
+			if (err = ioctl(frontend_fd, FE_SET_VOLTAGE, SEC_VOLTAGE_18))
+				return err;
+			msleep(15);
 			err = rotor_command(frontend_fd, 9, to_rotor_pos, 0, 0);
 			if (err) {
 				info("Rotor move error!\n");
@@ -111,20 +128,22 @@ int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int vol
 				}
 				info("completed.\n");
 			}
+
 		} else {
 			info("Rotor already at position %i\n", from_rotor_pos);
 		}
+
+		// correct tone and voltage
+		if (err = ioctl(frontend_fd, FE_SET_TONE, hiband ? SEC_TONE_ON : SEC_TONE_OFF))
+                        return err;
+		msleep(15);
+		if (err = ioctl(frontend_fd, FE_SET_VOLTAGE, voltage_18))
+			return err;
+		msleep(15);
 	}
 	return err;
 }
 
-static inline void msleep(uint32_t msec)
-{
-	struct timespec req = { msec / 1000, 1000000 * (msec % 1000) };
-
-	while (nanosleep(&req, &req))
-		;
-}
 
 int diseqc_send_msg (int fd, fe_sec_voltage_t v, struct diseqc_cmd **cmd,
 					 fe_sec_tone_mode_t t, fe_sec_mini_cmd_t b)

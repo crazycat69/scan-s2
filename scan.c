@@ -1855,18 +1855,25 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		return;
 	}
 
+	// wait for zero status indicating start of tunning
+	do {
+		ioctl(frontend_fd, FE_GET_EVENT, &ev);
+	}
+	while(ev.status != 0);
+
+	// Wait for tunning
 	for (i = 0; i < scan_iterations; i++) {
 		usleep (200000);
 
-		if (ioctl(frontend_fd, FE_READ_STATUS, &s) == -1) {
-			errorn("FE_READ_STATUS failed");
-			return -1;
+		if (ioctl(frontend_fd, FE_GET_EVENT, &ev) == -1) {
+			// no answer, consider it as not locked situation
+			ev.status = 0;
 		}
 
-		verbose(">>> tuning status == 0x%02X\n", s);
+		verbose(">>> tuning status == 0x%02X\n", ev.status);
 
 		// Tuning succeed
-		if (s & FE_HAS_LOCK) {
+		if(ev.status & FE_HAS_LOCK) {
 			t->last_tuning_failed = 0;
 
 			/* Remove duplicate entries for the same frequency that were created for other delivery systems */

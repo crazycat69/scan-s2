@@ -114,11 +114,6 @@ enum table_type {
 	NIT
 };
 
-enum format {
-	OUTPUT_ZAP,
-	OUTPUT_VDR,
-};
-
 static char demux_devname[80];
 
 // Configuration parameters
@@ -145,7 +140,7 @@ static int rotor_pos = 0;
 static int curr_rotor_pos = 0;
 static char rotor_pos_name[16] = "";
 static char override_orbital_pos[16] = "";
-static enum format output_format = OUTPUT_VDR;
+enum format output_format = OUTPUT_VDR;
 static int output_format_set = 0;
 static int disable_s1 = FALSE;
 static int disable_s2 = FALSE;
@@ -2679,6 +2674,7 @@ static void dump_lists (void)
 			switch (output_format)
 			{
 			case OUTPUT_VDR:
+			case OUTPUT_VDR_16x:
 				if(s->audio_pid[0] == 0 && s->ac3_pid != 0)
 					s->audio_pid[0] = s->ac3_pid;
 
@@ -2754,7 +2750,7 @@ static const char *usage = "\n"
 "		messages of each message type (default 0)\n"
 "	-I cnt	Scan iterations count (default 10).\n"
 "		Larger number will make scan longer on every channel\n"
-"	-o fmt	output format: 'vdr' (default) or 'zap'\n"
+"	-o fmt	output format: 'vdr' (default), 'vdr16x' for VDR version 1.6.x or 'zap'\n"
 "	-x N	Conditional Access, (default -1)\n"
 "		N=-2  gets all channels (FTA and encrypted),\n"
 "		      output received CAID :CAID:\n"
@@ -2898,6 +2894,7 @@ int main (int argc, char **argv)
 		case 'o':
 			if      (strcmp(optarg, "zap") == 0) output_format = OUTPUT_ZAP;
 			else if (strcmp(optarg, "vdr") == 0) output_format = OUTPUT_VDR;
+			else if (strcmp(optarg, "vdr16x") == 0) output_format = OUTPUT_VDR_16x;
 			else {
 				bad_usage(argv[0], 0);
 				return -1;
@@ -3083,6 +3080,7 @@ static void dump_dvb_parameters (FILE *f, struct transponder *t)
 	switch (output_format) 
 	{
 	case OUTPUT_VDR:
+	case OUTPUT_VDR_16x:
 		vdr_dump_dvb_parameters(f, t, override_orbital_pos);	
 		break;
 

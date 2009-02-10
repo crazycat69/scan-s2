@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "dump-vdr.h"
+#include "scan.h"
 
 static const char *inv_name [] = {
 	"0",
@@ -70,6 +71,8 @@ static char sat_polarisation(transponder_t *t)
 	return t->polarisation == POLARISATION_VERTICAL ? 'v' : 'h';
 }
 
+extern enum format output_format;
+
 void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_override)
 {
 	switch (t->delivery_system) {
@@ -92,34 +95,36 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 			case FEC_9_10: fprintf (f, "C910"); break;
 			}
 
-			switch(t->modulation)
-			{
-			case QPSK: fprintf(f, "M2"); break;
-			case QAM_16: fprintf(f, "M16"); break;
-			case QAM_32: fprintf(f, "M32"); break;
-			case QAM_64: fprintf(f, "M64"); break;
-			case QAM_128: fprintf(f, "M128"); break;
-			case QAM_256: fprintf(f, "M256"); break;
-			case VSB_8: fprintf(f, "M10"); break;
-			case VSB_16: fprintf(f, "M11"); break;
-			case PSK_8: fprintf(f, "M5"); break;
-			case APSK_16: fprintf(f, "M6"); break;
-			//case APSK_32: ???
-			//case DQPSK: ???
-			}
+			if(output_format != OUTPUT_VDR_16x) {
+				switch(t->modulation)
+				{
+				case QPSK: fprintf(f, "M2"); break;
+				case QAM_16: fprintf(f, "M16"); break;
+				case QAM_32: fprintf(f, "M32"); break;
+				case QAM_64: fprintf(f, "M64"); break;
+				case QAM_128: fprintf(f, "M128"); break;
+				case QAM_256: fprintf(f, "M256"); break;
+				case VSB_8: fprintf(f, "M10"); break;
+				case VSB_16: fprintf(f, "M11"); break;
+				case PSK_8: fprintf(f, "M5"); break;
+				case APSK_16: fprintf(f, "M6"); break;
+				//case APSK_32: ???
+				//case DQPSK: ???
+				}
 
-			switch(t->rolloff) 
-			{
-			case ROLLOFF_20: fprintf(f, "O20"); break;
-			case ROLLOFF_25: fprintf(f, "O25"); break;
-			case ROLLOFF_35: fprintf(f, "O35"); break;
-			}
+				switch(t->rolloff) 
+				{
+				case ROLLOFF_20: fprintf(f, "O20"); break;
+				case ROLLOFF_25: fprintf(f, "O25"); break;
+				case ROLLOFF_35: fprintf(f, "O35"); break;
+				}
 
-			if(t->delivery_system == SYS_DVBS) {
-				fprintf (f, "S0");
-			}
-			else {
-				fprintf (f, "S1");
+				if(t->delivery_system == SYS_DVBS) {
+					fprintf (f, "S0");
+				}
+				else {
+					fprintf (f, "S1");
+				}
 			}
 		
 			fprintf(f, ":");

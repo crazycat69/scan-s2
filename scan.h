@@ -31,6 +31,11 @@ extern int verbosity;
 #define debug(msg...) dprintf(5, msg)
 #define verbosedebug(msg...) dpprintf(6, msg)
 
+enum format {
+	OUTPUT_ZAP,
+	OUTPUT_VDR,
+	OUTPUT_VDR_16x
+};
 
 enum running_mode {
 	RM_NOT_RUNNING = 0x01,

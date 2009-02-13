@@ -2312,6 +2312,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 			/* set up list of delivery systems*/
 			fe_delivery_system_t delset[]={SYS_DVBS,SYS_DVBS2};
 			ndel=2;
+			if (!scan_mode1 && !scan_mode2) continue;
 			if (scan_mode1 && !scan_mode2) {delset[0]=SYS_DVBS ; ndel=1;}
 			if (!scan_mode1 && scan_mode2) {delset[0]=SYS_DVBS2; ndel=1;}
 

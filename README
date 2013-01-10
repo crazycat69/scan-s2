@@ -46,11 +46,13 @@ The format of frequencies files is as follows:
 For DVB-S/S2:
 S <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
 S1 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
-S2 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
+S2 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation] [mis id]
 For DVB-C:
 C <frequency> <symbol rate> [fec] [modulation]
-For DVB-T:
+For DVB-T/T2:
 T <frequency> [bandwidth] [HP fec] [LP fec] [modulation] [transmission mode] [guard] [hierarchy]
+T1 <frequency> [bandwidth] [HP fec] [LP fec] [modulation] [transmission mode] [guard] [hierarchy]
+T2 <frequency> [bandwidth] [HP fec] [LP fec] [modulation] [transmission mode] [guard] [hierarchy] [plp id]
 For ATSC:
 A <frequency> [modulation]
 
@@ -73,10 +75,10 @@ S entry type will be scanned for both DVB-S and DVB-S2 on the specified frequenc
 Possible values for parameters are:
 Polarity: H, V, R, L
 FEC: NONE, 1/2, 2/3, 3/4, 3/5, 4/5, 5/6, 6/7, 7/8, 8/9, 9/10, AUTO
-Modulation: QPSK, QAM16, QAM32, QAM64, QAM128, QAM256, 8VSB, 16VSB, 8PSK, 16APSK, AUTO
+Modulation: QPSK, QAM16, QAM32, QAM64, QAM128, QAM256, 8VSB, 16VSB, 8PSK, 16APSK, 32APSK, AUTO
 Bandwidth: 6MHz, 7MHz, 8MHz, AUTO
-Transmission mode: 2k, 8k, AUTO
-Guard interval: 1/32, 1/16, 1/8, 1/4, AUTO
+Transmission mode: 2k, 8k, AUTO, 1k, 4k, 16k, 32k
+Guard interval: 1/32, 1/16, 1/8, 1/4, AUTO, 1/128, 19/128, 19/256
 Hierarchy: NONE, 1, 2, 4, AUTO
 
 

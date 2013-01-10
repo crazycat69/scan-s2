@@ -2357,12 +2357,12 @@ static const char* bandwidth2str(enum fe_bandwidth bw)
 }
 
 struct strtab modetab[] = {
-	{ "1K",   TRANSMISSION_MODE_1K },
-	{ "2K",   TRANSMISSION_MODE_2K },
-	{ "4K",   TRANSMISSION_MODE_4K },
-	{ "8K",   TRANSMISSION_MODE_8K },
-	{ "16K",  TRANSMISSION_MODE_16K },
-	{ "32K",  TRANSMISSION_MODE_32K },
+	{ "1k",   TRANSMISSION_MODE_1K },
+	{ "2k",   TRANSMISSION_MODE_2K },
+	{ "4k",   TRANSMISSION_MODE_4K },
+	{ "8k",   TRANSMISSION_MODE_8K },
+	{ "16k",  TRANSMISSION_MODE_16K },
+	{ "32k",  TRANSMISSION_MODE_32K },
 	{ "AUTO", TRANSMISSION_MODE_AUTO },
 	{ NULL, 0 }
 };

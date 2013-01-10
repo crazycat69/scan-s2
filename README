@@ -16,9 +16,9 @@ Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 scan-s2 requires Linux DVB driver API version 5.2 and newer.
 The scan-s2 utility was tested with Igor M. Liplianin (liplianin@me.by) DVB S2 API driver changeset 149a5c57c1e2
 that can be obtained from: 
-http://mercurial.intuxication.org/hg/s2-liplianin
+https://bitbucket.org/liplianin/s2-liplianin-v37
 The sources could be obtained by running:
-hg clone http://mercurial.intuxication.org/hg/s2-liplianin
+hg clone https://bitbucket.org/liplianin/s2-liplianin-v37
 
 The driver directory was symbolically linked to "s2" directory. If you have the driver in other directory, 
 you'll have to change the following line in Makefile to point to the right place:

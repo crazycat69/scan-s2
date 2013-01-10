@@ -76,9 +76,9 @@ Possible values for parameters are:
 Polarity: H, V, R, L
 FEC: NONE, 1/2, 2/3, 3/4, 3/5, 4/5, 5/6, 6/7, 7/8, 8/9, 9/10, AUTO
 Modulation: QPSK, QAM16, QAM32, QAM64, QAM128, QAM256, 8VSB, 16VSB, 8PSK, 16APSK, 32APSK, AUTO
-Bandwidth: 6MHz, 7MHz, 8MHz, AUTO
-Transmission mode: 2k, 8k, AUTO, 1k, 4k, 16k, 32k
-Guard interval: 1/32, 1/16, 1/8, 1/4, AUTO, 1/128, 19/128, 19/256
+Bandwidth: 5MHz, 6MHz, 7MHz, 8MHz, 10MHz, AUTO
+Transmission mode: 1k, 2k, 4K, 8k, 16k, 32k, AUTO
+Guard interval: 1/32, 1/16, 1/8, 1/4, 1/128, 19/128, 19/256, AUTO
 Hierarchy: NONE, 1, 2, 4, AUTO
 
 

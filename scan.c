@@ -20,6 +20,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <iconv.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -662,10 +663,253 @@ static void parse_frequency_list_descriptor (const unsigned char *buf, struct tr
 	}
 }
 
+
+char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
+{
+
+	unsigned char *src, *dest;
+
+	char *utf8buf;
+	char *utf8out = utf8buf;
+	char *utf8in;
+	char *utf8res;
+	size_t inlen, outlen, convertedlen;
+	
+	int old_style_conv=0;
+	int skip_char=0;
+
+	iconv_t code_desc;
+	
+	switch (dvbtext[0]) {
+		case 0x01: /* ISO-8859-5 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-5");
+			break;
+		case 0x02: /* ISO-8859-6 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-6");
+			break;
+		case 0x03: /* ISO-8859-7 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-7");
+			break;
+		case 0x04: /* ISO-8859-8 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-8");
+			break;
+		case 0x05: /* ISO-8859-9 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-9");
+			break;
+		case 0x06: /* ISO-8859-10 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-10");
+			break;
+		case 0x07: /* ISO-8859-11 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-11");
+			break;
+		case 0x08: /* ISO-8859-12 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-12");
+			break;
+		case 0x09: /* ISO-8859-13 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-13");
+			break;
+		case 0x0a: /* ISO-8859-14 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-14");
+			break;
+		case 0x0b: /* ISO-8859-15 */
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","ISO8859-15");
+			break;
+		case 0x0c: /* 0x0C - 0x0F - reserverd for future use */
+		case 0x0d: 
+		case 0x0e:
+		case 0x0f:
+				skip_char = 1;
+				code_desc = iconv_open("UTF-8","LATIN1");
+				break;
+		case 0x10:
+				skip_char = 3;
+				if ( dvbtext[1] != 0x00 ) {
+					old_style_conv = 1;
+				} else {
+					switch (dvbtext[2]) {
+							case 0x01: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-1");
+								break;
+							case 0x02: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-2");
+								break;
+							case 0x03: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-3");
+								break;
+							case 0x04: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-4");
+								break;
+							case 0x05: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-5");
+								break;
+							case 0x06: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-6");
+								break;
+							case 0x07: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-7");
+								break;
+							case 0x08: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-8");
+								break;
+							case 0x09: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-9");
+								break;
+							case 0x0a: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-10");
+								break;
+							case 0x0b: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-11");
+								break;
+							case 0x0c: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-12");
+								break;
+							case 0x0d: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-13");
+								break;
+							case 0x0e: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-14");
+								break;
+							case 0x0f: /* ISO-8859-1 */
+								code_desc = iconv_open("UTF-8","ISO8859-15");
+								break;
+							default:
+								skip_char = 3;
+								old_style_conv = 1;
+								break;
+					}
+				}
+				break;
+		case 0x11: /* ISO/IEC 10646 Basic Multilingual Plane (BMP) */
+				skip_char = 1;
+				old_style_conv = 1;
+				break;
+		case 0x12: /* KSX1001-2004 Korean Character Set */
+				skip_char = 1;
+				old_style_conv = 1;
+				break;
+		case 0x13: /* GB-2312-1980 Simplified Chinese Character */
+				skip_char = 1;
+				old_style_conv = 1;
+				break;
+		case 0x14: /* Big5 subset of ISO/IEC 10646 Traditional Chinese */
+				skip_char = 1;
+				old_style_conv = 1;
+				break;
+		case 0x15: /* UTF-8 encoding of ISO/IEC 10646  Basic Multilingual Plane (BMP) */
+				skip_char = 1;
+				old_style_conv = 1;
+				break;
+		case 0x16: /* 0x16 - 0x1E - reserverd for future use */
+		case 0x17: 
+		case 0x18:
+		case 0x19:
+		case 0x1a:
+		case 0x1b:
+		case 0x1c:
+		case 0x1d:
+		case 0x1e:
+				skip_char = 1;
+				old_style_conv = 1;
+				break;
+		case 0x1F: /* described by encoding_type_id. TBD */
+				skip_char = 1;
+				old_style_conv = 1;
+				break;
+		default:
+				skip_char = 0;
+				old_style_conv = 1;
+			break;
+	}
+	
+	if ( skip_char > 0 )
+	{
+		memmove(dvbtext,&dvbtext[skip_char],dvbtextlen-skip_char);
+		dvbtext[dvbtextlen-skip_char]='\0';
+	}
+
+	if ( old_style_conv == 1) 
+	{
+		
+		utf8buf = malloc(dvbtextlen);
+		memset( utf8buf, 0, dvbtextlen );
+		memcpy ( utf8buf, dvbtext, dvbtextlen );
+
+		for (src = dest = (unsigned char *) utf8buf; *src; src++)
+			if (*src >= 0x20 && (*src < 0x80 || *src > 0x9f))
+				*dest++ = *src;
+		*dest = '\0';
+		
+
+		if (!utf8buf[0]) {
+			/* zap zero length names */
+			if ( utf8buf )
+				free(utf8buf);
+			utf8res = strdup('\0');
+		}	else {
+			code_desc = iconv_open("UTF-8","LATIN1");
+			if ( code_desc != (iconv_t)(-1) )
+			{
+				utf8in = strdup(utf8buf);
+				inlen = strlen(utf8buf);
+				if ( utf8buf )
+					free(utf8buf);
+
+					outlen = inlen*2;
+				utf8buf = malloc(outlen);
+				utf8out = utf8buf;
+				memset( utf8buf, 0, outlen);
+				errno = 0;
+				utf8in = dvbtext;
+				convertedlen = iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
+				utf8res = strdup(utf8buf);
+				
+				if ( utf8buf )
+					free(utf8buf);
+
+				iconv_close(code_desc);
+
+			}
+		}
+	} 
+	else
+	{
+		if ( code_desc != (iconv_t)(-1) )
+		{
+			inlen = dvbtextlen-skip_char;
+			outlen = inlen*2;
+			utf8buf = malloc(outlen);
+			utf8out = utf8buf;
+			memset( utf8buf, 0, outlen);
+			errno = 0;
+			utf8in = dvbtext;
+			convertedlen = iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
+			utf8res = strdup(utf8buf);
+			if ( utf8buf )
+				free(utf8buf);
+
+			iconv_close(code_desc);
+		}
+
+	}
+	return utf8res;
+}
+
 static void parse_service_descriptor (const unsigned char *buf, struct service *s)
 {
 	unsigned char len;
 	unsigned char *src, *dest;
+	char* dvbtext;
 
 	//	s->type = buf[2];
 
@@ -673,25 +917,16 @@ static void parse_service_descriptor (const unsigned char *buf, struct service *
 	len = *buf;
 	buf++;
 
-	if (s->provider_name)
+	if (s->provider_name == NULL)
 		free (s->provider_name);
 
-	s->provider_name = malloc (len + 1);
-	memcpy (s->provider_name, buf, len);
-	s->provider_name[len] = '\0';
+	dvbtext = malloc (len + 1);
+	memcpy (dvbtext, buf, len);
+	dvbtext[len]='\0';
+	s->provider_name = dvbtext2utf8(dvbtext,len + 1);
 
-	/* remove control characters (FIXME: handle short/long name) */
-	/* FIXME: handle character set correctly (e.g. via iconv)
-	* c.f. EN 300 468 annex A */
-	for (src = dest = (unsigned char *) s->provider_name; *src; src++)
-		if (*src >= 0x20 && (*src < 0x80 || *src > 0x9f))
-			*dest++ = *src;
-	*dest = '\0';
-	if (!s->provider_name[0]) {
-		/* zap zero length names */
-		free (s->provider_name);
-		s->provider_name = 0;
-	}
+	if (dvbtext == NULL) 
+		free(dvbtext);
 
 	if (s->service_name)
 		free (s->service_name);
@@ -700,22 +935,13 @@ static void parse_service_descriptor (const unsigned char *buf, struct service *
 	len = *buf;
 	buf++;
 
-	s->service_name = malloc (len + 1);
-	memcpy (s->service_name, buf, len);
-	s->service_name[len] = '\0';
+	dvbtext = malloc (len + 1);
+	memcpy (dvbtext, buf, len);
+	dvbtext[len]='\0';
+	s->service_name = dvbtext2utf8(dvbtext,len + 1);
 
-	/* remove control characters (FIXME: handle short/long name) */
-	/* FIXME: handle character set correctly (e.g. via iconv)
-	* c.f. EN 300 468 annex A */
-	for (src = dest = (unsigned char *) s->service_name; *src; src++)
-		if (*src >= 0x20 && (*src < 0x80 || *src > 0x9f))
-			*dest++ = *src;
-	*dest = '\0';
-	if (!s->service_name[0]) {
-		/* zap zero length names */
-		free (s->service_name);
-		s->service_name = 0;
-	}
+	if (dvbtext == NULL) 
+		free(dvbtext);
 
 	info("0x%04X 0x%04X: pmt_pid 0x%04X %s -- %s (%s%s)\n",
 		current_tp->transport_stream_id,

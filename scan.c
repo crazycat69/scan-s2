@@ -2342,6 +2342,8 @@ struct strtab bwtab[] = {
 	{ "8MHz", BANDWIDTH_8_MHZ },
 	{ "7MHz", BANDWIDTH_7_MHZ },
 	{ "6MHz", BANDWIDTH_6_MHZ },
+	{ "5MHz", BANDWIDTH_5_MHZ },
+	{ "10MHz", BANDWIDTH_10_MHZ },
 	{ "AUTO", BANDWIDTH_AUTO },
 	{ NULL, 0 }
 };

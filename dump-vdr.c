@@ -19,7 +19,9 @@ static const char *fec_name [] = {
 	"67",
 	"78",
 	"89",
-	"999"
+	"999",
+	"35",
+	"910"
 };
 
 static const char *qam_name [] = {
@@ -36,13 +38,19 @@ static const char *bw_name [] = {
 	"8",
 	"7",
 	"6",
-	"999"
+	"999",
+	"5",
+	"10"
 };
 
 static const char *mode_name [] = {
 	"2",
 	"8",
-	"999"
+	"999",
+	"4",
+	"1",
+	"16",
+	"32"
 };
 
 static const char *guard_name [] = {
@@ -50,7 +58,10 @@ static const char *guard_name [] = {
 	"16",
 	"8",
 	"4",
-	"999"
+	"999",
+	"1128",
+	"19128",
+	"19256"
 };
 
 static const char *hierarchy_name [] = {
@@ -68,7 +79,7 @@ static const char *west_east_flag_name [] = {
 
 static char sat_polarisation(transponder_t *t)
 {
-	return t->polarisation == POLARISATION_VERTICAL ? 'v' : 'h';
+	return t->polarisation == POLARISATION_VERTICAL ? 'V' : 'H';
 }
 
 extern enum format output_format;
@@ -108,7 +119,7 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				case VSB_16: fprintf(f, "M11"); break;
 				case PSK_8: fprintf(f, "M5"); break;
 				case APSK_16: fprintf(f, "M6"); break;
-				//case APSK_32: ???
+				case APSK_32: fprintf(f, "M7"); break;
 				//case DQPSK: ???
 				}
 
@@ -116,7 +127,10 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				{
 				case ROLLOFF_20: fprintf(f, "O20"); break;
 				case ROLLOFF_25: fprintf(f, "O25"); break;
-				case ROLLOFF_35: fprintf(f, "O35"); break;
+				case ROLLOFF_35:
+				case ROLLOFF_AUTO:
+				default:
+				    break;
 				}
 
 				if(t->delivery_system == SYS_DVBS) {
@@ -124,6 +138,9 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				}
 				else {
 					fprintf (f, "S1");
+				}
+				if (t->stream_id>-1 && t->stream_id<256) {
+					fprintf (f, "P%i", t->stream_id);
 				}
 			}
 		
@@ -157,6 +174,19 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 			fprintf (f, "T%s", mode_name[t->transmission_mode]);
 			fprintf (f, "G%s", guard_name[t->guard_interval]);
 			fprintf (f, "Y%s", hierarchy_name[t->hierarchy]);
+			fprintf (f, ":T:27500:");
+			break;
+
+		case SYS_DVBT2:
+			fprintf (f, "%i:", t->frequency / 1000);
+			fprintf (f, "I%s", inv_name[t->inversion]);
+			fprintf (f, "B%s", bw_name[t->bandwidth]);
+			fprintf (f, "C%s", fec_name[t->fecHP]);
+			fprintf (f, "M%s", qam_name[t->modulation]);
+			fprintf (f, "T%s", mode_name[t->transmission_mode]);
+			fprintf (f, "G%s", guard_name[t->guard_interval]);
+			if (t->stream_id>-1 && t->stream_id<256)
+				fprintf (f, "P%i", t->stream_id);
 			fprintf (f, ":T:27500:");
 			break;
 

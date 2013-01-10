@@ -47,8 +47,8 @@
 
 #include "atsc_psip_section.h"
 
-#if DVB_API_VERSION != 5 || DVB_API_VERSION_MINOR != 0
-#error scan-s2 requires Linux DVB driver API version 5.0!
+#if DVB_API_VERSION < 5 || DVB_API_VERSION_MINOR < 2
+#error scan-s2 requires Linux DVB driver API version 5.2 and newer!
 #endif
 
 #define CRC_LEN		4
@@ -220,7 +220,7 @@ static int is_same_frequency(uint32_t f1, uint32_t f2)
 
 static int is_same_transponder(struct transponder *t1, struct transponder *t2)
 {
-	if(is_same_frequency(t1->frequency, t2->frequency) && t1->polarisation == t2->polarisation) {
+	if(is_same_frequency(t1->frequency, t2->frequency) && t1->polarisation == t2->polarisation && t1->stream_id == t2->stream_id) {
 		return 1;
 	}
 	else {
@@ -1833,11 +1833,12 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		{ .cmd = DTV_INVERSION,			.u.data = t->inversion },
 		{ .cmd = DTV_ROLLOFF,			.u.data = t->rolloff },
 		{ .cmd = DTV_BANDWIDTH_HZ,		.u.data = bandwidth_hz },
-		{ .cmd = DTV_PILOT,				.u.data = PILOT_AUTO },
+		{ .cmd = DTV_PILOT,			.u.data = PILOT_AUTO },
+		{ .cmd = DTV_DVBT2_PLP_ID,		.u.data = t->stream_id },
 		{ .cmd = DTV_TUNE },
 	};
 	struct dtv_properties cmdseq_tune = {
-		.num = 10,
+		.num = sizeof(p_tune)/sizeof(p_tune[0]),
 		.props = p_tune
 	};
 	
@@ -1876,7 +1877,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			/* Remove duplicate entries for the same frequency that were created for other delivery systems */
 			remove_duplicate_transponder(t);
 
-
+#ifdef READ_PARAMS
 			struct dtv_property p[] = {
 				{ .cmd = DTV_DELIVERY_SYSTEM },
 				{ .cmd = DTV_MODULATION },
@@ -1901,6 +1902,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			t->fec = p[2].u.data;
 			t->inversion = p[3].u.data;
 			t->rolloff = p[4].u.data;
+#endif
 
 			return 0;
 		}
@@ -1936,6 +1938,10 @@ static int tune_to_transponder (int frontend_fd, struct transponder *t)
 
 	case SYS_DVBT:
 		info("----------------------------------> Using DVB-T\n");
+		break;
+
+	case SYS_DVBT2:
+		info("----------------------------------> Using DVB-T2\n");
 		break;
 
 	case SYS_ATSC:
@@ -2081,18 +2087,18 @@ static const char* rolloff2str(enum fe_rolloff rolloff)
 }
 
 struct strtab qamtab[] = {
-	{ "QPSK",   QPSK },
-	{ "QAM16",  QAM_16 },
-	{ "QAM32",  QAM_32 },
-	{ "QAM64",  QAM_64 },
-	{ "QAM128", QAM_128 },
-	{ "QAM256", QAM_256 },
-	{ "AUTO",   QAM_AUTO },
-	{ "8VSB",   VSB_8 },
-	{ "16VSB",  VSB_16 },
-	{ "8PSK",	PSK_8 },
-	{ "16APSK", APSK_16 },
 	{ "AUTO",	QAM_AUTO },
+	{ "QAM16",	QAM_16 },
+	{ "QAM32",	QAM_32 },
+	{ "QAM64",	QAM_64 },
+	{ "QAM128",	QAM_128 },
+	{ "QAM256",	QAM_256 },
+	{ "8VSB",	VSB_8 },
+	{ "16VSB",	VSB_16 },
+	{ "QPSK",	QPSK },
+	{ "8PSK",	PSK_8 },
+	{ "16APSK",	APSK_16 },
+	{ "32APSK",	APSK_32 },
 	{ NULL, 0 }
 };
 
@@ -2125,8 +2131,12 @@ static const char* bandwidth2str(enum fe_bandwidth bw)
 }
 
 struct strtab modetab[] = {
-	{ "2k",   TRANSMISSION_MODE_2K },
-	{ "8k",   TRANSMISSION_MODE_8K },
+	{ "1K",   TRANSMISSION_MODE_1K },
+	{ "2K",   TRANSMISSION_MODE_2K },
+	{ "4K",   TRANSMISSION_MODE_4K },
+	{ "8K",   TRANSMISSION_MODE_8K },
+	{ "16K",  TRANSMISSION_MODE_16K },
+	{ "32K",  TRANSMISSION_MODE_32K },
 	{ "AUTO", TRANSMISSION_MODE_AUTO },
 	{ NULL, 0 }
 };
@@ -2146,6 +2156,9 @@ struct strtab guardtab[] = {
 	{ "1/16", GUARD_INTERVAL_1_16 },
 	{ "1/8",  GUARD_INTERVAL_1_8 },
 	{ "1/4",  GUARD_INTERVAL_1_4 },
+	{ "1/128",  GUARD_INTERVAL_1_128 },
+	{ "19/128",  GUARD_INTERVAL_19_128 },
+	{ "19/256",  GUARD_INTERVAL_19_256 },
 	{ "AUTO", GUARD_INTERVAL_AUTO },
 	{ NULL, 0 }
 };
@@ -2261,6 +2274,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 	struct transponder *t2;
 	int scan_mode1 = FALSE;
 	int scan_mode2 = FALSE;
+	int stream_id;
 
 	inif = fopen(initial, "r");
 	if (!inif) {
@@ -2278,10 +2292,11 @@ static int tune_initial (int frontend_fd, const char *initial)
 		memset(guard, 0, sizeof(guard));
 		memset(hier, 0, sizeof(hier));
 		memset(rolloff, 0, sizeof(rolloff));
+		stream_id = -1;
 
 		if (buf[0] == '#' || buf[0] == '\n')
 			;
-		else if (sscanf(buf, "S%c %u %1[HVLR] %u %4s %4s %6s\n", &scan_mode, &f, pol, &sr, fec, rolloff, qam) >= 3) {
+		else if (sscanf(buf, "S%c %u %1[HVLR] %u %4s %4s %6s %i\n", &scan_mode, &f, pol, &sr, fec, rolloff, qam, &stream_id) >= 3) {
 			scan_mode1 = FALSE;
 			scan_mode2 = FALSE;
 			switch(scan_mode)
@@ -2326,6 +2341,9 @@ static int tune_initial (int frontend_fd, const char *initial)
 			} else {
 				modset[0]=QAM_AUTO; nmod=1;
 			}
+			
+			/* Check MIS 0-255 */
+			if (stream_id<0 || stream_id>255) stream_id=-1;
 
 			/* set up list of rollofs*/			
 			fe_rolloff_t rolset[3]={ROLLOFF_35,ROLLOFF_25,ROLLOFF_20};
@@ -2364,6 +2382,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 							t->modulation = modset[imod];
 							t->rolloff = rolset[irol];
 							t->fec = fecset[ifec];
+							t->stream_id = stream_id;
 
 							switch(pol[0]) 
 							{
@@ -2378,10 +2397,10 @@ static int tune_initial (int frontend_fd, const char *initial)
 							t->inversion = spectral_inversion;
 							t->symbol_rate = sr;
 
-							info("initial transponder DVB-S%s %u %c %d %s %s %s\n",
+							info("initial transponder DVB-S%s %u %c %d %s %s %s %i\n",
 								t->delivery_system==SYS_DVBS?" ":"2",
 								t->frequency,
-								pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation));
+								pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation), stream_id);
 						}
 					}
 				}
@@ -2410,10 +2429,10 @@ static int tune_initial (int frontend_fd, const char *initial)
 				fec2str(t->fec),
 				qam2str(t->modulation));
 		}
-		else if (sscanf(buf, "T %u %4s %4s %4s %7s %4s %4s %4s\n",
-			&f, bw, fec, fec2, qam, mode, guard, hier) >= 1) {
+		else if (sscanf(buf, "T%c %u %4s %4s %4s %7s %4s %4s %4s %i\n",
+			&scan_mode, &f, bw, fec, fec2, qam, mode, guard, hier, &stream_id) >= 2) {
 				t = alloc_transponder(f);
-				t->delivery_system = SYS_DVBT;
+				t->delivery_system = scan_mode == '2' ? SYS_DVBT2 : SYS_DVBT;
 				t->inversion = spectral_inversion;
 				t->bandwidth = BANDWIDTH_AUTO;
 				t->fecHP = FEC_AUTO;
@@ -2456,7 +2475,13 @@ static int tune_initial (int frontend_fd, const char *initial)
 					t->hierarchy = str2hier(hier);
 				}
 
-				info("initial transponder %u %s %s %s %s %s %s %s\n",
+				/* Check PLP 0-255 */
+				if (stream_id<0 || stream_id>255)
+					stream_id = -1;
+
+				t->stream_id = stream_id;
+
+				info("initial transponder %u %s %s %s %s %s %s %s %i\n",
 					t->frequency,
 					bandwidth2str(t->bandwidth),
 					fec2str(t->fecHP),
@@ -2464,7 +2489,8 @@ static int tune_initial (int frontend_fd, const char *initial)
 					qam2str(t->modulation),
 					mode2str(t->transmission_mode),
 					guard2str(t->guard_interval),
-					hier2str(t->hierarchy));
+					hier2str(t->hierarchy),
+					t->stream_id);
 		}
 		else if (sscanf(buf, "A %u %7s\n", &f, qam) >= 1) {
 			t = alloc_transponder(f);
@@ -3032,10 +3058,11 @@ int main (int argc, char **argv)
 			{ .cmd = DTV_INVERSION },
 			{ .cmd = DTV_ROLLOFF },
 			{ .cmd = DTV_BANDWIDTH_HZ },
+			{ .cmd = DTV_DVBT2_PLP_ID },
 		};
 
 		struct dtv_properties cmdseq = {
-			.num = 8,
+			.num = sizeof(p)/sizeof(p[0]),
 			.props = p
 		};
 
@@ -3051,6 +3078,7 @@ int main (int argc, char **argv)
 		current_tp->fec = p[4].u.data;
 		current_tp->inversion = p[5].u.data;
 		current_tp->rolloff = p[6].u.data;
+		current_tp->stream_id = p[8].u.data;
 
 		switch(p[6].u.data) 
 		{

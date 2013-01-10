@@ -93,6 +93,7 @@ typedef struct transponder {
 	fe_code_rate_t fecHP;					/* DVB-T */
 	fe_code_rate_t fecLP;					/* DVB-T */
 	fe_modulation_t modulation;
+	int stream_id;
 	fe_bandwidth_t bandwidth;				/* DVB-T */
 	fe_hierarchy_t hierarchy;				/* DVB-T */
 	fe_guard_interval_t guard_interval;		/* DVB-T */

@@ -13,7 +13,7 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-scan-s2 requires Linux DVB driver API version 5.0.
+scan-s2 requires Linux DVB driver API version 5.2 and newer.
 The scan-s2 utility was tested with Igor M. Liplianin (liplianin@me.by) DVB S2 API driver changeset 149a5c57c1e2
 that can be obtained from: 
 http://mercurial.intuxication.org/hg/s2-liplianin

@@ -2039,6 +2039,26 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		}
 		break;
 
+	case SYS_DVBT2:
+		if_freq = t->frequency;
+
+		switch(t->bandwidth) 
+		{
+		case BANDWIDTH_5_MHZ:	bandwidth_hz = 5000000; break;
+		case BANDWIDTH_6_MHZ:	bandwidth_hz = 6000000; break;
+		case BANDWIDTH_7_MHZ:	bandwidth_hz = 7000000; break;
+		case BANDWIDTH_8_MHZ:	bandwidth_hz = 8000000; break;
+		case BANDWIDTH_10_MHZ:	bandwidth_hz = 10000000; break;
+		case BANDWIDTH_AUTO:	bandwidth_hz = 0; break;
+		default:				bandwidth_hz = 0; break;
+		}
+
+		if (verbosity >= 2){
+			dprintf(1,"DVB-T2 frequency is %d\n", if_freq);
+			dprintf(1,"DVB-T2 bandwidth is %d\n", bandwidth_hz);
+		}
+		break;
+
 	case SYS_DVBC_ANNEX_B:
 	case SYS_DVBC_ANNEX_AC:
 		if_freq = t->frequency;

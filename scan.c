@@ -52,6 +52,15 @@
 #error scan-s2 requires Linux DVB driver API version 5.2 and newer!
 #endif
 
+#ifndef DTV_STREAM_ID
+	#define DTV_STREAM_ID DTV_ISDBS_TS_ID
+#endif
+
+#ifndef NO_STREAM_ID_FILTER
+	#define NO_STREAM_ID_FILTER	(~0U)
+#endif
+
+
 #define CRC_LEN		4
 
 enum pid {
@@ -2080,7 +2089,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		{ .cmd = DTV_ROLLOFF,			.u.data = t->rolloff },
 		{ .cmd = DTV_BANDWIDTH_HZ,		.u.data = bandwidth_hz },
 		{ .cmd = DTV_PILOT,			.u.data = PILOT_AUTO },
-		{ .cmd = DTV_DVBT2_PLP_ID,		.u.data = t->stream_id },
+		{ .cmd = DTV_STREAM_ID,		.u.data = t->stream_id },
 		{ .cmd = DTV_TUNE },
 	};
 	struct dtv_properties cmdseq_tune = {
@@ -2591,7 +2600,8 @@ static int tune_initial (int frontend_fd, const char *initial)
 			}
 			
 			/* Check MIS 0-255 */
-			if (stream_id<0 || stream_id>255) stream_id=-1;
+			if (stream_id<0 || stream_id>255)
+				stream_id = NO_STREAM_ID_FILTER;
 
 			/* set up list of rollofs*/			
 			fe_rolloff_t rolset[3]={ROLLOFF_35,ROLLOFF_25,ROLLOFF_20};
@@ -2725,7 +2735,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 
 				/* Check PLP 0-255 */
 				if (stream_id<0 || stream_id>255)
-					stream_id = -1;
+					stream_id = NO_STREAM_ID_FILTER;
 
 				t->stream_id = stream_id;
 
@@ -3306,7 +3316,7 @@ int main (int argc, char **argv)
 			{ .cmd = DTV_INVERSION },
 			{ .cmd = DTV_ROLLOFF },
 			{ .cmd = DTV_BANDWIDTH_HZ },
-			{ .cmd = DTV_DVBT2_PLP_ID },
+			{ .cmd = DTV_STREAM_ID },
 		};
 
 		struct dtv_properties cmdseq = {

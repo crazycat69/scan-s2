@@ -864,7 +864,7 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 			/* zap zero length names */
 			if ( utf8buf )
 				free(utf8buf);
-			utf8res = strdup('\0');
+			utf8res = strdup("\0");
 		}	else {
 			code_desc = iconv_open("UTF-8","LATIN1");
 			if ( code_desc != (iconv_t)(-1) )
@@ -2549,7 +2549,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 		memset(guard, 0, sizeof(guard));
 		memset(hier, 0, sizeof(hier));
 		memset(rolloff, 0, sizeof(rolloff));
-		stream_id = -1;
+		stream_id = NO_STREAM_ID_FILTER;
 
 		if (buf[0] == '#' || buf[0] == '\n')
 			;

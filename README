@@ -150,7 +150,7 @@ For VDR output format type "man 5 vdr"
 Special thanks to:
  - Igor M. Liplianin for S2API driver and szap-s2 utility that was used as a reference for scan-s2 utility.
  - Unknown person that posted patch for scan utility that allows sending uncommited diseqc commands.
-
+ - Multistream support from CrazyCat
 
 Enjoy,
 Alex Betis <alex.betis@gmail.com>

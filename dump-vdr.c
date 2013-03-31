@@ -133,14 +133,10 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				    break;
 				}
 
-				if(t->delivery_system == SYS_DVBS) {
-					fprintf (f, "S0");
-				}
-				else {
+				if(t->delivery_system == SYS_DVBS2) {
 					fprintf (f, "S1");
-				}
-				if (t->stream_id>-1 && t->stream_id<256) {
-					fprintf (f, "P%i", t->stream_id);
+					if (t->stream_id>-1 && t->stream_id<256)
+						fprintf (f, "P%i", t->stream_id);
 				}
 			}
 		
@@ -179,14 +175,17 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 
 		case SYS_DVBT2:
 			fprintf (f, "%i:", t->frequency / 1000);
-			fprintf (f, "I%s", inv_name[t->inversion]);
 			fprintf (f, "B%s", bw_name[t->bandwidth]);
 			fprintf (f, "C%s", fec_name[t->fecHP]);
 			fprintf (f, "M%s", qam_name[t->modulation]);
 			fprintf (f, "T%s", mode_name[t->transmission_mode]);
 			fprintf (f, "G%s", guard_name[t->guard_interval]);
-			if (t->stream_id>-1 && t->stream_id<256)
-				fprintf (f, "P%i", t->stream_id);
+			if(t->delivery_system == SYS_DVBT2)
+			{
+				fprintf (f, "S1");
+				if(t->stream_id>-1 && t->stream_id<256)
+					fprintf (f, "P%i", t->stream_id);
+			}
 			fprintf (f, ":T:27500:");
 			break;
 

@@ -75,7 +75,7 @@ void zap_dump_dvb_parameters (FILE *f, transponder_t *t, int sat_number)
 			fprintf (f, "%c:", sat_polarisation(t));
 			fprintf (f, "%d:", sat_number);
 			fprintf (f, "%i", t->symbol_rate / 1000); /* channels.conf wants kBaud */
-			/*fprintf (f, "%s", fec_name[p->u.qpsk.fec_inner]);*/
+			/* fprintf (f, "%s", fec_name[t->fec]); */
 			break;
 
 		case SYS_DVBC_ANNEX_AC:

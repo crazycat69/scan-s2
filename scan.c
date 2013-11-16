@@ -2089,7 +2089,9 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		{ .cmd = DTV_ROLLOFF,			.u.data = t->rolloff },
 		{ .cmd = DTV_BANDWIDTH_HZ,		.u.data = bandwidth_hz },
 		{ .cmd = DTV_PILOT,			.u.data = PILOT_AUTO },
-		{ .cmd = DTV_STREAM_ID,		.u.data = t->stream_id },
+		{ .cmd = DTV_STREAM_ID,			.u.data = ((t->pls_mode & 0x3) << 26) |
+								  ((t->pls_code & 0x3ffff) << 8) |
+								  (t->stream_id & 0xff) },
 		{ .cmd = DTV_TUNE },
 	};
 	struct dtv_properties cmdseq_tune = {
@@ -2531,7 +2533,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 	struct transponder *t2;
 	int scan_mode1 = FALSE;
 	int scan_mode2 = FALSE;
-	int stream_id;
+	int stream_id, pls_code, pls_mode;
 
 	inif = fopen(initial, "r");
 	if (!inif) {
@@ -2550,10 +2552,11 @@ static int tune_initial (int frontend_fd, const char *initial)
 		memset(hier, 0, sizeof(hier));
 		memset(rolloff, 0, sizeof(rolloff));
 		stream_id = NO_STREAM_ID_FILTER;
+		pls_code = pls_mode = 0;
 
 		if (buf[0] == '#' || buf[0] == '\n')
 			;
-		else if (sscanf(buf, "S%c %u %1[HVLR] %u %4s %4s %6s %i\n", &scan_mode, &f, pol, &sr, fec, rolloff, qam, &stream_id) >= 3) {
+		else if (sscanf(buf, "S%c %u %1[HVLR] %u %4s %4s %6s %i %i %i\n", &scan_mode, &f, pol, &sr, fec, rolloff, qam, &stream_id, &pls_code, &pls_mode) >= 3) {
 			scan_mode1 = FALSE;
 			scan_mode2 = FALSE;
 			switch(scan_mode)
@@ -2599,9 +2602,18 @@ static int tune_initial (int frontend_fd, const char *initial)
 				modset[0]=QAM_AUTO; nmod=1;
 			}
 			
+
 			/* Check MIS 0-255 */
 			if (stream_id<0 || stream_id>255)
 				stream_id = NO_STREAM_ID_FILTER;
+
+			/* Check PLS MODE 0-2 */
+			if (pls_mode<0 || pls_mode>2)
+				pls_mode = 0;
+
+			/* Check PLS CODE 0-262143 */
+			if (pls_mode<0 || pls_mode>262143)
+				pls_code = 0;
 
 			/* set up list of rollofs*/			
 			fe_rolloff_t rolset[3]={ROLLOFF_35,ROLLOFF_25,ROLLOFF_20};
@@ -2641,6 +2653,8 @@ static int tune_initial (int frontend_fd, const char *initial)
 							t->rolloff = rolset[irol];
 							t->fec = fecset[ifec];
 							t->stream_id = stream_id;
+							t->pls_mode = pls_mode;
+							t->pls_code = pls_code;
 
 							switch(pol[0]) 
 							{
@@ -2655,10 +2669,10 @@ static int tune_initial (int frontend_fd, const char *initial)
 							t->inversion = spectral_inversion;
 							t->symbol_rate = sr;
 
-							info("initial transponder DVB-S%s %u %c %d %s %s %s %i\n",
+							info("initial transponder DVB-S%s %u %c %d %s %s %s %i %i %i\n",
 								t->delivery_system==SYS_DVBS?" ":"2",
 								t->frequency,
-								pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation), stream_id);
+								pol[0], t->symbol_rate, fec2str(t->fec), rolloff2str(t->rolloff), qam2str(t->modulation), t->stream_id, t->pls_mode, t->pls_code);
 						}
 					}
 				}
@@ -3336,7 +3350,9 @@ int main (int argc, char **argv)
 		current_tp->fec = p[4].u.data;
 		current_tp->inversion = p[5].u.data;
 		current_tp->rolloff = p[6].u.data;
-		current_tp->stream_id = p[8].u.data;
+		current_tp->stream_id = p[8].u.data & 0xff;
+		current_tp->pls_code = (p[8].u.data >> 8) & 0x3ffff;
+		current_tp->pls_mode = (p[8].u.data >> 26) & 0x3;
 
 		switch(p[6].u.data) 
 		{

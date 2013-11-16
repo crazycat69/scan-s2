@@ -46,7 +46,7 @@ The format of frequencies files is as follows:
 For DVB-S/S2:
 S <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
 S1 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation]
-S2 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation] [mis id]
+S2 <frequency> <polarity> <symbol rate> [fec] [rolloff] [modulation] [mis id] [pls_code] [pls_mode]
 For DVB-C:
 C <frequency> <symbol rate> [fec] [modulation]
 For DVB-T/T2:

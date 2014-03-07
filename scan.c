@@ -414,6 +414,7 @@ static void parse_iso639_language_descriptor (const unsigned char *buf, struct s
 	if (len >= 4) {
 		debug("    LANG=%.3s %d\n", buf, buf[3]);
 		memcpy(s->audio_lang[s->audio_num], buf, 3);
+		s->audio_lang[s->audio_num][3] = '\0';
 #if 0
 		/* seems like the audio_type is wrong all over the place */
 		//if (buf[3] == 0) -> normal

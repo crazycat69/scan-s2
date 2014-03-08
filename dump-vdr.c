@@ -135,9 +135,10 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 
 				if(t->delivery_system == SYS_DVBS2) {
 					fprintf (f, "S1");
-					fprintf (f, "P%i", ((t->pls_mode & 0x3) << 26) |
-							   ((t->pls_code & 0x3ffff) << 8) |
-							   (t->stream_id & 0xff));
+					if (t->stream_id != NO_STREAM_ID_FILTER)
+						fprintf (f, "P%i", ((t->pls_mode & 0x3) << 26) |
+								   ((t->pls_code & 0x3ffff) << 8) |
+								   (t->stream_id & 0xff));
 				}
 			}
 		

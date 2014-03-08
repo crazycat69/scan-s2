@@ -4,7 +4,10 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include <linux/dvb/version.h>
 #include <linux/dvb/frontend.h>
+#include <linux/dvb/dmx.h>
+
 #include "list.h"
 
 #define FALSE	0
@@ -30,6 +33,18 @@ extern int verbosity;
 #define moreverbose(msg...) dprintf(4, msg)
 #define debug(msg...) dprintf(5, msg)
 #define verbosedebug(msg...) dpprintf(6, msg)
+
+#if DVB_API_VERSION < 5 || DVB_API_VERSION_MINOR < 2
+#error scan-s2 requires Linux DVB driver API version 5.2 and newer!
+#endif
+
+#ifndef DTV_STREAM_ID
+	#define DTV_STREAM_ID DTV_ISDBS_TS_ID
+#endif
+
+#ifndef NO_STREAM_ID_FILTER
+	#define NO_STREAM_ID_FILTER	(~0U)
+#endif
 
 enum format {
 	OUTPUT_ZAP,

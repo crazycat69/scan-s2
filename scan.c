@@ -35,10 +35,6 @@
 #include <glob.h>
 #include <ctype.h>
 
-#include <linux/dvb/version.h>
-#include <linux/dvb/frontend.h>
-#include <linux/dvb/dmx.h>
-
 #include "list.h"
 #include "diseqc.h"
 #include "dump-zap.h"
@@ -47,19 +43,6 @@
 #include "lnb.h"
 
 #include "atsc_psip_section.h"
-
-#if DVB_API_VERSION < 5 || DVB_API_VERSION_MINOR < 2
-#error scan-s2 requires Linux DVB driver API version 5.2 and newer!
-#endif
-
-#ifndef DTV_STREAM_ID
-	#define DTV_STREAM_ID DTV_ISDBS_TS_ID
-#endif
-
-#ifndef NO_STREAM_ID_FILTER
-	#define NO_STREAM_ID_FILTER	(~0U)
-#endif
-
 
 #define CRC_LEN		4
 
@@ -2090,9 +2073,10 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		{ .cmd = DTV_ROLLOFF,			.u.data = t->rolloff },
 		{ .cmd = DTV_BANDWIDTH_HZ,		.u.data = bandwidth_hz },
 		{ .cmd = DTV_PILOT,			.u.data = PILOT_AUTO },
-		{ .cmd = DTV_STREAM_ID,			.u.data = ((t->pls_mode & 0x3) << 26) |
+		{ .cmd = DTV_STREAM_ID,			.u.data = t->stream_id == NO_STREAM_ID_FILTER ? t->stream_id :
+								  ((t->pls_mode & 0x3) << 26) |
 								  ((t->pls_code & 0x3ffff) << 8) |
-								  (t->stream_id & 0xff) },
+								  (t->stream_id & 0xff)},
 		{ .cmd = DTV_TUNE },
 	};
 	struct dtv_properties cmdseq_tune = {

@@ -127,7 +127,7 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				{
 				case ROLLOFF_20: fprintf(f, "O20"); break;
 				case ROLLOFF_25: fprintf(f, "O25"); break;
-				case ROLLOFF_35:
+				case ROLLOFF_35: fprintf(f, "O35"); break;
 				case ROLLOFF_AUTO:
 				default:
 				    break;

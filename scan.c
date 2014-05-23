@@ -2597,7 +2597,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 				pls_mode = 0;
 
 			/* Check PLS CODE 0-262143 */
-			if (pls_mode<0 || pls_mode>262143)
+			if (pls_code<0 || pls_code>262143)
 				pls_code = 0;
 
 			/* set up list of rollofs*/			

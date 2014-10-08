@@ -1975,7 +1975,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 				setup_switch (frontend_fd,
 					switch_pos,
-					t->polarisation == POLARISATION_VERTICAL ? 0 : 1,
+					(t->polarisation == POLARISATION_VERTICAL || t->polarisation == POLARISATION_CIRCULAR_RIGHT)? 0 : 1,
 					hiband,
 					uncommitted_switch_pos);
 
@@ -1987,7 +1987,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 					if_freq = abs(t->frequency - lnb_type.low_val);
 			} else {
 				/* C-Band Multipoint LNBf */
-				if_freq = abs(t->frequency - (t->polarisation == POLARISATION_VERTICAL ? 
+				if_freq = abs(t->frequency - ((t->polarisation == POLARISATION_VERTICAL || t->polarisation == POLARISATION_CIRCULAR_RIGHT)? 
 					lnb_type.low_val: lnb_type.high_val));
 			}
 		} else	{
@@ -2005,7 +2005,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			err = rotate_rotor(	frontend_fd,
 						curr_rotor_pos, 
 						rotor_pos,
-						t->polarisation == POLARISATION_VERTICAL ? 0 : 1,
+						(t->polarisation == POLARISATION_VERTICAL || t->polarisation == POLARISATION_CIRCULAR_RIGHT)? 0 : 1,
 						hiband);
 			if (err)
 				error("Error in rotate_rotor err=%i\n",err); 
@@ -2644,11 +2644,19 @@ static int tune_initial (int frontend_fd, const char *initial)
 							switch(pol[0]) 
 							{
 							case 'H':
-							case 'L':
 								t->polarisation = POLARISATION_HORIZONTAL;
 								break;
+							case 'V':
+								t->polarisation = POLARISATION_VERTICAL;
+								break;
+							case 'L':
+								t->polarisation = POLARISATION_CIRCULAR_LEFT;
+								break;
+							case 'R':
+								t->polarisation = POLARISATION_CIRCULAR_RIGHT;
+								break;
 							default:
-								t->polarisation = POLARISATION_VERTICAL;;
+								t->polarisation = POLARISATION_VERTICAL;
 								break;
 							}
 							t->inversion = spectral_inversion;

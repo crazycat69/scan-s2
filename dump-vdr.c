@@ -79,7 +79,13 @@ static const char *west_east_flag_name [] = {
 
 static char sat_polarisation(transponder_t *t)
 {
-	return t->polarisation == POLARISATION_VERTICAL ? 'V' : 'H';
+	switch (t->polarisation) {
+		case POLARISATION_VERTICAL: return 'V';
+		case POLARISATION_HORIZONTAL: return 'H';
+		case POLARISATION_CIRCULAR_RIGHT: return 'R';
+		case POLARISATION_CIRCULAR_LEFT: return 'L';
+		default: return 'U';
+	}
 }
 
 extern enum format output_format;

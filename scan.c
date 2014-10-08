@@ -41,6 +41,7 @@
 #include "dump-vdr.h"
 #include "scan.h"
 #include "lnb.h"
+#include "bouquet.h"
 
 #include "atsc_psip_section.h"
 
@@ -137,6 +138,7 @@ enum format output_format = OUTPUT_VDR;
 static int output_format_set = 0;
 static int disable_s1 = FALSE;
 static int disable_s2 = FALSE;
+static int use_bouquets = 0;
 
 static rotorslot_t rotor[49];
 
@@ -164,7 +166,7 @@ struct section_buf {
 static LIST_HEAD(scanned_transponders);
 static LIST_HEAD(new_transponders);
 static struct transponder *current_tp;
-
+static struct bouquet_ctx *bouquets = NULL;
 
 static void dump_dvb_parameters (FILE *f, struct transponder *p);
 
@@ -573,7 +575,7 @@ static void parse_satellite_delivery_system_descriptor (const unsigned char *buf
 	if (verbosity >= 5) {
 		debug("%#04x/%#04x ", t->network_id, t->transport_stream_id);
 		dump_dvb_parameters (stderr, t);
-		printf("\n");
+		dprintf(5, "\n");
 		if (t->scan_done)
 			dprintf(5, " (done)");
 		if (t->last_tuning_failed)
@@ -1671,6 +1673,11 @@ static int parse_section(struct section_buf *sb, unsigned char *buf)
 		case TID_ATSC_CVT2:
 			verbose("ATSC VCT\n");
 			parse_psip_vct(sb, buf, section_length, table_id, table_id_ext);
+			break;
+
+		case TID_BAT:
+			verbose("BAT bouquet_id: %d (0x%04X)\n", table_id_ext, table_id_ext);
+			bouquet_parse_bat(bouquets, buf, section_length, table_id_ext, section_version_number);
 			break;
 
 		default:
@@ -2809,6 +2816,7 @@ static void scan_tp_dvb (void)
 	struct section_buf s1;
 	struct section_buf s2;
 	struct section_buf s3;
+	struct section_buf s4;
 
 	/**
 	*  filter timeouts > min repetition rates specified in ETR211
@@ -2830,6 +2838,11 @@ static void scan_tp_dvb (void)
 			setup_filter (&s3, demux_devname, PID_NIT_ST, TID_NIT_OTHER, -1, 1, 1, 15);
 			add_filter (&s3);
 		}
+	}
+
+	if (use_bouquets) {
+		setup_filter (&s4, demux_devname, PID_SDT_BAT_ST, TID_BAT, -1, 1, 1, 15);
+		add_filter (&s4);
 	}
 
 	do {
@@ -2896,6 +2909,29 @@ static int sat_number (struct transponder *t)
 	(void) t;
 
 	return switch_pos + uncommitted_switch_pos*4;
+}
+
+static void dump_service(struct transponder *t, struct service *s)
+{
+	switch (output_format)
+	{
+	case OUTPUT_VDR:
+		vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
+		break;
+
+	case OUTPUT_VDR_16x:
+		if(t->delivery_system != SYS_DVBS2) {
+			vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
+		}
+		break;
+
+	case OUTPUT_ZAP:
+		zap_dump_service_parameter_set (stdout, s, t, sat_number(t));
+		break;
+
+	default:
+		break;
+	}
 }
 
 static void dump_lists (void)
@@ -2966,27 +3002,14 @@ static void dump_lists (void)
 			if(s->audio_pid[0] == 0 && s->ac3_pid != 0)
 				s->audio_pid[0] = s->ac3_pid;
 
-			switch (output_format)
-			{
-			case OUTPUT_VDR:
-				vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
-				break;
-
-			case OUTPUT_VDR_16x:
-				if(t->delivery_system != SYS_DVBS2) {
-					vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
-				}
-				break;
-
-			case OUTPUT_ZAP:
-				zap_dump_service_parameter_set (stdout, s, t, sat_number(t));
-				break;
-
-			default:
-				break;
-			}
+			if (!use_bouquets)
+				dump_service(t, s);
 		}
 	}
+
+	if (use_bouquets)
+		bouquet_dump(bouquets, &scanned_transponders, ca_select, serv_select, dump_service);
+
 	info("Done.\n");
 }
 
@@ -3070,7 +3093,10 @@ static const char *usage = "\n"
 "		s=S2  Disable DVB-S2 scan (good for owners of cards that do not\n"
 "		      support DVB-S2 systems)\n"
 "	-X	Disable AUTOs for initial transponders (esp. for hardware which\n"
-"		not support it). Instead try each value of any free parameters.\n";
+"		not support it). Instead try each value of any free parameters.\n"
+"	-B opts	Parse BAT and create channel groups for VDR output.\n"
+"		Use -B help for options.\n"
+"	-b	The same as -B, default options.\n";
 
 
 void bad_usage(char *pname, int problem)
@@ -3124,11 +3150,25 @@ int main (int argc, char **argv)
 
 	/* start with default lnb type */
 	lnb_type = *lnb_enum(0);
-	while ((opt = getopt(argc, argv, "5cnXpa:f:d:O:k:I:S:s:r:R:o:D:x:t:i:l:vquPA:U")) != -1) {
+	while ((opt = getopt(argc, argv, "5cnXpa:f:d:O:k:I:S:s:r:R:o:D:x:t:i:l:vquPA:UbB:")) != -1) {
 		switch (opt) 
 		{
 		case 'a':
 			adapter = strtoul(optarg, NULL, 0);
+			break;
+
+		case 'b':
+		case 'B':
+			if (opt == 'B' && optarg && strcmp(optarg, "help") == 0) {
+				fprintf(stderr, "%s", bouquet_help_msg());
+				return -1;
+			}
+			if (!use_bouquets) {
+				bouquets = bouquet_create((opt == 'B')? optarg : "");
+				if (!bouquets)
+					return -1;
+				use_bouquets = 1;
+			}
 			break;
 
 		case 'c':
@@ -3264,6 +3304,11 @@ int main (int argc, char **argv)
 		};
 	}
 
+	if (use_bouquets && !(output_format == OUTPUT_VDR || output_format == OUTPUT_VDR_16x)) {
+		fprintf(stderr, "Bouquets require a VDR output format.\n");
+		return -1;
+	}
+
 	if (optind < argc)
 		initial = argv[optind];
 	if ((!initial && !current_tp_only) || (initial && current_tp_only) ||
@@ -3369,6 +3414,9 @@ int main (int argc, char **argv)
 	close (frontend_fd);
 
 	dump_lists ();
+
+	if (bouquets)
+		bouquet_free(bouquets);
 
 	return 0;
 }

@@ -2853,6 +2853,7 @@ static void scan_tp(int frontend_fd)
 	case SYS_DVBC_ANNEX_AC:
 	case SYS_DVBC_ANNEX_B:
 	case SYS_DVBT:
+	case SYS_DVBT2:
 	case SYS_DSS:
 		scan_tp_dvb();
 		break;

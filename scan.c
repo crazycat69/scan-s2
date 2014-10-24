@@ -2060,6 +2060,14 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			dprintf(1,"DVB-C frequency is %d\n", if_freq);
 		}
 		break;
+
+	case SYS_ATSC:
+		if_freq = t->frequency;
+
+		if (verbosity >= 2){
+			dprintf(1,"ATSC frequency is %d\n", if_freq);
+		}
+		break;
 	}
 
 	struct dvb_frontend_event ev;

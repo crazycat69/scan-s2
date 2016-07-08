@@ -2673,7 +2673,7 @@ static int tune_initial (int frontend_fd, const char *initial)
 		}
 		else if (sscanf(buf, "C %u %u %4s %6s\n", &f, &sr, fec, qam) >= 2) {
 			t = alloc_transponder(f);
-			t->delivery_system = SYS_DVBC_ANNEX_AC;
+			t->delivery_system = sr < 6000000 ? SYS_DVBC_ANNEX_B : SYS_DVBC_ANNEX_AC;
 			t->inversion = spectral_inversion;
 			t->symbol_rate = sr;
 			t->fec = FEC_AUTO;

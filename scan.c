@@ -478,12 +478,11 @@ static void parse_cable_delivery_system_descriptor (const unsigned char *buf, st
 		return;
 	}
 
-	t->delivery_system = SYS_DVBC_ANNEX_AC;
-
 	t->frequency = bcd32_to_cpu (buf[2], buf[3], buf[4], buf[5]);
 	t->frequency *= 100;
 	t->fec = fec_tab[buf[12] & 0x07];
 	t->symbol_rate = 10 * bcd32_to_cpu (buf[9], buf[10], buf[11], buf[12] & 0xf0);
+	t->delivery_system = t->symbol_rate < 6000000 ? SYS_DVBC_ANNEX_B : SYS_DVBC_ANNEX_AC;
 	if ((buf[8] & 0x0f) > 5)
 		t->modulation = QAM_AUTO;
 	else

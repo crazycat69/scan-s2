@@ -1933,8 +1933,9 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 	int rc;
 	int i;
 	fe_status_t s;
-	uint32_t if_freq = 0;
-	uint32_t bandwidth_hz = 0;
+	uint16_t strength, snr;
+	uint32_t ber, ucblocks;
+	uint32_t if_freq = 0, bandwidth_hz = 0;
 	current_tp = t;
 	int hiband = 0;
 
@@ -1972,12 +1973,6 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 				if (t->frequency >= lnb_type.switch_val)
 					hiband = 1;
 
-				setup_switch (frontend_fd,
-					switch_pos,
-					t->polarisation == POLARISATION_VERTICAL ? 0 : 1,
-					hiband,
-					uncommitted_switch_pos);
-
 				usleep(50000);
 
 				if (hiband)
@@ -1996,6 +1991,12 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 		if (verbosity >= 2) {
 			dprintf(1,"DVB-S IF freq is %d\n", if_freq);
 		}
+
+		setup_switch (frontend_fd,
+			switch_pos,
+			t->polarisation == POLARISATION_VERTICAL ? 0 : 1,
+			hiband,
+			uncommitted_switch_pos);
 
 		if (rotor_pos != 0 ) {
 			/* Rotate DiSEqC 1.2 rotor to correct orbital position */
@@ -2152,6 +2153,22 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			t->inversion = p[3].u.data;
 			t->rolloff = p[4].u.data;
 #endif
+			if (ioctl(frontend_fd, FE_READ_STATUS, &s) == -1)
+				perror("FE_READ_STATUS failed");
+			/* some frontends might not support all these ioctls, thus we
+			 * avoid printing errors
+			*/
+			if (ioctl(frontend_fd, FE_READ_SIGNAL_STRENGTH, &strength) == -1)
+				strength = -2;
+			if (ioctl(frontend_fd, FE_READ_SNR, &snr) == -1)
+				snr = -2;
+			if (ioctl(frontend_fd, FE_READ_BER, &ber) == -1)
+				ber = -2;
+			if (ioctl(frontend_fd, FE_READ_UNCORRECTED_BLOCKS, &ucblocks) == -1)
+				ucblocks = -2;
+
+			info ("status %02x | signal strength %3u%% | snr %3u%% | ber %d | unc %d\n",
+				s, (strength * 100) / 0xffff, (snr * 100) / 0xffff, ber, ucblocks);
 
 			return 0;
 		}

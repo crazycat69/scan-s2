@@ -5,6 +5,11 @@
 
 #define	HASH_MINSIZE	2
 
+#define USE_FNV_32_HASH
+
+#ifdef USE_FNV_32_HASH
+
+#define hash_function	fnv_32a_buf
 typedef uint32_t Fnv32_t;
 #define FNV_32_PRIME ((Fnv32_t)0x01000193)
 static Fnv32_t fnv_32a_buf(void *buf, size_t len)
@@ -19,14 +24,16 @@ static Fnv32_t fnv_32a_buf(void *buf, size_t len)
 	return hval;
 }
 
+#else
+
+#define hash_function	hash_simple
 static hash_value_t hash_simple(void *key, int len)
 {
 	unsigned char *b = (unsigned char *)key;
 	return (unsigned int)(b[1]<<8) | b[0];
 }
 
-#define hash_function	fnv_32a_buf
-//#define hash_function	hash_simple
+#endif
 
 // size must be power of 2
 void htable_init(struct htable *h, int size, int resize)

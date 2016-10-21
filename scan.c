@@ -175,7 +175,7 @@ static void setup_filter (struct section_buf* s, const char *dmx_devname,
 						  int run_once, int segmented, int timeout);
 static void add_filter (struct section_buf *s);
 
-static const char * fe_type2str(fe_type_t t);
+int rotor_nn(int orbital_pos, int we_flag);
 
 /* According to the DVB standards, the combination of network_id and
 * transport_stream_id should be unique, but in real life the satellite
@@ -665,10 +665,10 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 	unsigned char *src, *dest;
 
 	char *utf8buf;
-	char *utf8out = utf8buf;
+	char *utf8out;
 	char *utf8in;
 	char *utf8res;
-	size_t inlen, outlen, convertedlen;
+	size_t inlen, outlen;
 	
 	int old_style_conv=0;
 	int skip_char=0;
@@ -866,7 +866,7 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 				memset( utf8buf, 0, outlen);
 				errno = 0;
 				utf8in = dvbtext;
-				convertedlen = iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
+				iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
 				utf8res = strdup(utf8buf);
 				
 				if ( utf8buf )
@@ -888,7 +888,7 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 			memset( utf8buf, 0, outlen);
 			errno = 0;
 			utf8in = dvbtext;
-			convertedlen = iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
+			iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
 			utf8res = strdup(utf8buf);
 			if ( utf8buf )
 				free(utf8buf);
@@ -903,7 +903,6 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 static void parse_service_descriptor (const unsigned char *buf, struct service *s)
 {
 	unsigned char len;
-	unsigned char *src, *dest;
 	char* dvbtext;
 
 	//	s->type = buf[2];
@@ -1717,8 +1716,11 @@ static int read_sections (struct section_buf *sb)
 	/* the section filter API guarantess that we get one full section
 	* per read(), provided that the buffer is large enough (it is)
 	*/
-	if (((count = read (sb->fd, buffer, sizeof(buffer))) < 0) && errno == EOVERFLOW)
+	int overflow = 0;
+	if (((count = read (sb->fd, buffer, sizeof(buffer))) < 0) && errno == EOVERFLOW) {
+		overflow = 1;
 		count = read (sb->fd, buffer, sizeof(buffer));
+	}
 	if (count < 0) {
 		errorn("read_sections: read error");
 		return -1;
@@ -1740,6 +1742,7 @@ static int read_sections (struct section_buf *sb)
 		return -1;
 	}
 
+	debug("read() %d bytes from fd=%d, overflow=%d\n", count, sb->fd, overflow);
 	int i;
 	for(i=0; i<count; i++) {
 		debug("0x%02X ", buffer[i]);
@@ -1938,9 +1941,7 @@ static void read_filters (void)
 
 static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 {
-	int rc;
 	int i;
-	fe_status_t s;
 	uint32_t if_freq = 0;
 	uint32_t bandwidth_hz = 0;
 	current_tp = t;
@@ -1957,7 +1958,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 	if ((ioctl(frontend_fd, FE_SET_PROPERTY, &cmdseq_clear)) == -1) {
 		perror("FE_SET_PROPERTY DTV_CLEAR failed");
-		return;
+		return -1;
 	}
 
 	if (verbosity >= 1) {
@@ -2067,6 +2068,8 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			dprintf(1,"DVB-C frequency is %d\n", if_freq);
 		}
 		break;
+	default:
+		return -1;
 	}
 
 	struct dvb_frontend_event ev;
@@ -2099,7 +2102,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 	if ((ioctl(frontend_fd, FE_SET_PROPERTY, &cmdseq_tune)) == -1) {
 		perror("FE_SET_PROPERTY TUNE failed");
-		return;
+		return -1;
 	}
 
 	// wait for zero status indicating start of tunning
@@ -2522,7 +2525,6 @@ static int tune_initial (int frontend_fd, const char *initial)
 	char buf[1024];
 	char pol[20], fec[20], qam[20], bw[20], fec2[20], mode[20], guard[20], hier[20], rolloff[20], scan_mode;
 	struct transponder *t;
-	struct transponder *t2;
 	int scan_mode1 = FALSE;
 	int scan_mode2 = FALSE;
 	int stream_id, pls_code, pls_mode;
@@ -2940,7 +2942,6 @@ static void dump_lists (void)
 	struct transponder *t;
 	struct service *s;
 	int n = 0, i;
-	int cnt = 1;
 	char sn[20];
 	int anon_services = 0;
 
@@ -3379,7 +3380,7 @@ int main (int argc, char **argv)
 		/* query for currently tuned parameters */
 		if ((ioctl(frontend_fd, FE_GET_PROPERTY, &cmdseq)) == -1) {
 			perror("FE_GET_PROPERTY failed");
-			return;
+			return 1;
 		}
 		current_tp = alloc_transponder(p[0].u.data);
 		current_tp->delivery_system = p[1].u.data;

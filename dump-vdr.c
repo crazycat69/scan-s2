@@ -110,6 +110,7 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 			case FEC_7_8: fprintf (f, "C78"); break;
 			case FEC_8_9: fprintf (f, "C89"); break;
 			case FEC_9_10: fprintf (f, "C910"); break;
+			default: break;
 			}
 
 			if(output_format != OUTPUT_VDR_16x) {
@@ -127,6 +128,7 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				case APSK_16: fprintf(f, "M6"); break;
 				case APSK_32: fprintf(f, "M7"); break;
 				//case DQPSK: ???
+				default: break;
 				}
 
 				switch(t->rolloff) 

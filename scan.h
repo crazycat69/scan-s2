@@ -49,7 +49,8 @@ extern int verbosity;
 enum format {
 	OUTPUT_ZAP,
 	OUTPUT_VDR,
-	OUTPUT_VDR_16x
+	OUTPUT_VDR_16x,
+	OUTPUT_M3U
 };
 
 enum running_mode {
@@ -134,6 +135,9 @@ typedef struct rotorslot {
 	unsigned int we_flag;	// 0=W, 1=E
 	char angle_we[8];		// '19.2E'
 } rotorslot_t;
+
+float rotor_angle(int nn);
+int rotor_nn(int orbital_pos, int we_flag);
 
 #endif
 

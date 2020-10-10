@@ -39,6 +39,7 @@
 #include "diseqc.h"
 #include "dump-zap.h"
 #include "dump-vdr.h"
+#include "dump-m3u.h"
 #include "scan.h"
 #include "lnb.h"
 
@@ -133,10 +134,15 @@ static int rotor_pos = 0;
 static int curr_rotor_pos = 0;
 static char rotor_pos_name[16] = "";
 static char override_orbital_pos[16] = "";
+static char url[256] = "";
 enum format output_format = OUTPUT_VDR;
 static int output_format_set = 0;
 static int disable_s1 = FALSE;
 static int disable_s2 = FALSE;
+static int fix_dvbt2_delivery_system = SYS_DVBT;
+static char mplp_id[256][1];
+static int lock_mplp_id = 0;
+static int scan_mplp_enable = 0;
 
 static rotorslot_t rotor[49];
 
@@ -174,6 +180,14 @@ static void setup_filter (struct section_buf* s, const char *dmx_devname,
 static void add_filter (struct section_buf *s);
 
 static const char * fe_type2str(fe_type_t t);
+
+static void init_mplp_id(void)
+{
+	int i;
+
+	for(i = 0; i < 256; i++)
+		mplp_id[i][0] = -1;
+}
 
 /* According to the DVB standards, the combination of network_id and
 * transport_stream_id should be unique, but in real life the satellite
@@ -591,7 +605,7 @@ static void parse_terrestrial_delivery_system_descriptor (const unsigned char *b
 		return;
 	}
 
-	t->delivery_system = SYS_DVBT;
+	t->delivery_system = fix_dvbt2_delivery_system;
 
 	t->frequency = (buf[2] << 24) | (buf[3] << 16);
 	t->frequency |= (buf[4] << 8) | buf[5];
@@ -1002,6 +1016,15 @@ static int find_descriptor(uint8_t tag, const unsigned char *buf,
 	return 0;
 }
 
+static void add_plp_id(const unsigned char *buf)
+{
+	int i = buf[3] & 0xff;
+	if(lock_mplp_id)
+		return;
+	info("Found PLP ID = %d\n", i);
+	mplp_id[i][0] = 1;
+}
+
 static void parse_descriptors(enum table_type t, const unsigned char *buf,
 							  int descriptors_loop_len, void *data)
 {
@@ -1040,6 +1063,18 @@ static void parse_descriptors(enum table_type t, const unsigned char *buf,
 			info("ERROR: S2_satellite_delivery_system_descriptor not parsed\n");
 			if( t == NIT)
 				parse_s2_satellite_delivery_system_descriptor (buf, data);
+			break;
+
+		case 0x7f:
+			/* McMCC */
+			if (t == NIT) {
+				switch(buf[2]) {
+					case 0x04: /* DVB-T2 delivery system descriptor */
+					case 0x0d: /* DVB-C2 delivery system descriptor */
+						add_plp_id(buf);
+						break;
+				}
+			}
 			break;
 
 		case 0x44:
@@ -1950,7 +1985,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 	if ((ioctl(frontend_fd, FE_SET_PROPERTY, &cmdseq_clear)) == -1) {
 		perror("FE_SET_PROPERTY DTV_CLEAR failed");
-		return;
+		return -1;
 	}
 
 	if (verbosity >= 1) {
@@ -1960,6 +1995,8 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			dprintf(1, " (tuning failed)");
 		dprintf(1, "\n");
 	}
+
+	fix_dvbt2_delivery_system = SYS_DVBT;
 
 	switch(t->delivery_system) 
 	{
@@ -2100,7 +2137,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 	if ((ioctl(frontend_fd, FE_SET_PROPERTY, &cmdseq_tune)) == -1) {
 		perror("FE_SET_PROPERTY TUNE failed");
-		return;
+		return -1;
 	}
 
 	// wait for zero status indicating start of tunning
@@ -2144,7 +2181,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			// get the actual parameters from the driver for that channel
 			if ((ioctl(frontend_fd, FE_GET_PROPERTY, &cmdseq)) == -1) {
 				perror("FE_GET_PROPERTY failed");
-				return;
+				return -1;
 			}
 
 			t->delivery_system = p[0].u.data;
@@ -2169,6 +2206,8 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 			info ("status %02x | signal strength %3u%% | snr %3u%% | ber %d | unc %d\n",
 				s, (strength * 100) / 0xffff, (snr * 100) / 0xffff, ber, ucblocks);
+
+			fix_dvbt2_delivery_system = t->delivery_system;
 
 			return 0;
 		}
@@ -2234,6 +2273,24 @@ static int tune_to_transponder (int frontend_fd, struct transponder *t)
 	return __tune_to_transponder (frontend_fd, t);
 }
 
+static int t_stream_id = -1;
+static struct transponder *tw = NULL;
+
+static int get_mplp_id(void)
+{
+	int i;
+
+	for(i = 1; i < 256; i++) {
+		if(mplp_id[i][0] == 1) {
+			mplp_id[i][0] = -1;
+			lock_mplp_id = 1;
+			return i;
+		}
+	}
+	lock_mplp_id = 0;
+	return -1;
+}
+
 static int tune_to_next_transponder (int frontend_fd)
 {
 	struct list_head *pos, *tmp;
@@ -2241,11 +2298,27 @@ static int tune_to_next_transponder (int frontend_fd)
 	uint32_t freq;
 	int rc;
 
-	list_for_each_safe(pos, tmp, &new_transponders) {
-		t = list_entry (pos, struct transponder, list);
-retry:
+	if(scan_mplp_enable && (t_stream_id = get_mplp_id()) > 0) {
+		goto retry;
+	}
 
-		rc = tune_to_transponder(frontend_fd, t);
+	list_for_each_safe(pos, tmp, &new_transponders) {
+		tw = list_entry (pos, struct transponder, list);
+
+retry:
+		if(scan_mplp_enable && t_stream_id > 0) {
+			t = calloc(1, sizeof(*t));
+			t->frequency = tw->frequency;
+			t->stream_id = t_stream_id;
+			INIT_LIST_HEAD(&t->list);
+			INIT_LIST_HEAD(&t->services);
+			list_add_tail(&t->list, &scanned_transponders);
+			copy_transponder(t, tw, TRUE);
+			tw = t;
+		} else
+			tw = list_entry (pos, struct transponder, list);
+
+		rc = tune_to_transponder(frontend_fd, tw);
 
 		if (rc == 0) {
 			return 0;
@@ -2255,25 +2328,25 @@ retry:
 			return -2;
 		}
 next:
-		if (t->other_frequency_flag && t->other_f && t->n_other_f) {
+		if (tw->other_frequency_flag && tw->other_f && tw->n_other_f) {
 			/* check if the alternate freqeuncy is really new to us */
-			freq = t->other_f[t->n_other_f - 1];
-			t->n_other_f--;
+			freq = tw->other_f[tw->n_other_f - 1];
+			tw->n_other_f--;
 
 			if (find_transponder_by_freq(freq))
 				goto next;
 
 			/* remember tuning to the old frequency failed */
 			to = calloc(1, sizeof(*to));
-			to->frequency = t->frequency;
+			to->frequency = tw->frequency;
 			to->wrong_frequency = 1;
 			INIT_LIST_HEAD(&to->list);
 			INIT_LIST_HEAD(&to->services);
 			list_add_tail(&to->list, &scanned_transponders);
-			copy_transponder(to, t, FALSE);
+			copy_transponder(to, tw, FALSE);
 
-			t->frequency = freq;
-			info("retrying with f=%d\n", t->frequency);
+			tw->frequency = freq;
+			info("retrying with f=%d\n", tw->frequency);
 
 			goto retry;
 		}
@@ -2900,6 +2973,8 @@ static void scan_network (int frontend_fd, const char *initial)
 		return;
 	}
 
+	init_mplp_id();
+
 	do {
 		scan_tp(frontend_fd);
 		do {
@@ -2999,6 +3074,10 @@ static void dump_lists (void)
 				zap_dump_service_parameter_set (stdout, s, t, sat_number(t));
 				break;
 
+			case OUTPUT_M3U:
+				m3u_dump_service_parameter_set (stdout, s, t, url);
+				break;
+
 			default:
 				break;
 			}
@@ -3061,7 +3140,9 @@ static const char *usage = "\n"
 "		messages of each message type (default 0)\n"
 "	-I cnt	Scan iterations count (default 10).\n"
 "		Larger number will make scan longer on every channel\n"
-"	-o fmt	output format: 'vdr' (default), 'vdr16x' for VDR version 1.6.x or 'zap'\n"
+"	-M	Scan with support Multiple-PLP (DVB-T2 only)\n"
+"	-H url	Generation M3U playlist for SATIP, use as 'http://host:port' or 'rtsp://host:port'\n"
+"	-o fmt	output format: 'm3u', 'vdr' (default), 'vdr16x' for VDR version 1.6.x or 'zap'\n"
 "	-x N	Conditional Access, (default -1)\n"
 "		N=-2  gets all channels (FTA and encrypted),\n"
 "		      output received CAID :CAID:\n"
@@ -3141,7 +3222,7 @@ int main (int argc, char **argv)
 
 	/* start with default lnb type */
 	lnb_type = *lnb_enum(0);
-	while ((opt = getopt(argc, argv, "5cnXpa:f:d:O:k:I:S:s:r:R:o:D:x:t:i:l:vquPA:U")) != -1) {
+	while ((opt = getopt(argc, argv, "5cnMXpa:f:d:O:k:I:S:s:r:R:H:o:D:x:t:i:l:vquPA:U")) != -1) {
 		switch (opt) 
 		{
 		case 'a':
@@ -3160,6 +3241,10 @@ int main (int argc, char **argv)
 
 		case 'X':
 			noauto = 1;
+			break;
+
+		case 'M':
+			scan_mplp_enable = 1;
 			break;
 
 		case 'd':
@@ -3206,11 +3291,21 @@ int main (int argc, char **argv)
 			if      (strcmp(optarg, "zap") == 0) output_format = OUTPUT_ZAP;
 			else if (strcmp(optarg, "vdr") == 0) output_format = OUTPUT_VDR;
 			else if (strcmp(optarg, "vdr16x") == 0) output_format = OUTPUT_VDR_16x;
+			else if (strcmp(optarg, "m3u") == 0) output_format = OUTPUT_M3U;
 			else {
 				bad_usage(argv[0], 0);
 				return -1;
 			}
 			output_format_set = 1;
+			break;
+
+		case 'H':
+			if(!strncmp(optarg, "http://", 7) || !strncmp(optarg, "rtsp://", 7))
+				strncpy(url, optarg, sizeof(url)-1);
+			else {
+				bad_usage(argv[0], 0);
+				return -1;
+			}
 			break;
 
 		case 'D':
@@ -3351,7 +3446,7 @@ int main (int argc, char **argv)
 		/* query for currently tuned parameters */
 		if ((ioctl(frontend_fd, FE_GET_PROPERTY, &cmdseq)) == -1) {
 			perror("FE_GET_PROPERTY failed");
-			return;
+			return -1;
 		}
 		current_tp = alloc_transponder(p[0].u.data);
 		current_tp->delivery_system = p[1].u.data;
@@ -3392,11 +3487,12 @@ int main (int argc, char **argv)
 
 static void dump_dvb_parameters (FILE *f, struct transponder *t)
 {
-	switch (output_format) 
+	switch (output_format)
 	{
 	case OUTPUT_VDR:
 	case OUTPUT_VDR_16x:
-		vdr_dump_dvb_parameters(f, t, override_orbital_pos);	
+	case OUTPUT_M3U:
+		vdr_dump_dvb_parameters(f, t, override_orbital_pos);
 		break;
 
 	case OUTPUT_ZAP:

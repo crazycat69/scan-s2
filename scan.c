@@ -2046,7 +2046,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 
 		setup_switch (frontend_fd,
 			switch_pos,
-			t->polarisation == POLARISATION_VERTICAL ? 0 : 1,
+			(t->polarisation == POLARISATION_VERTICAL || t->polarisation == POLARISATION_CIRCULAR_RIGHT)? 0 : 1,
 			hiband,
 			uncommitted_switch_pos);
 

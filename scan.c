@@ -42,6 +42,7 @@
 #include "dump-m3u.h"
 #include "scan.h"
 #include "lnb.h"
+#include "bouquet.h"
 
 #include "atsc_psip_section.h"
 
@@ -143,6 +144,7 @@ static int fix_dvbt2_delivery_system = SYS_DVBT;
 static char mplp_id[256][1];
 static int lock_mplp_id = 0;
 static int scan_mplp_enable = 0;
+static int use_bouquets = 0;
 
 static rotorslot_t rotor[49];
 
@@ -170,7 +172,7 @@ struct section_buf {
 static LIST_HEAD(scanned_transponders);
 static LIST_HEAD(new_transponders);
 static struct transponder *current_tp;
-
+static struct bouquet_ctx *bouquets = NULL;
 
 static void dump_dvb_parameters (FILE *f, struct transponder *p);
 
@@ -179,7 +181,7 @@ static void setup_filter (struct section_buf* s, const char *dmx_devname,
 						  int run_once, int segmented, int timeout);
 static void add_filter (struct section_buf *s);
 
-static const char * fe_type2str(fe_type_t t);
+int rotor_nn(int orbital_pos, int we_flag);
 
 static void init_mplp_id(void)
 {
@@ -586,7 +588,7 @@ static void parse_satellite_delivery_system_descriptor (const unsigned char *buf
 	if (verbosity >= 5) {
 		debug("%#04x/%#04x ", t->network_id, t->transport_stream_id);
 		dump_dvb_parameters (stderr, t);
-		printf("\n");
+		dprintf(5, "\n");
 		if (t->scan_done)
 			dprintf(5, " (done)");
 		if (t->last_tuning_failed)
@@ -676,10 +678,10 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 	unsigned char *src, *dest;
 
 	char *utf8buf;
-	char *utf8out = utf8buf;
+	char *utf8out;
 	char *utf8in;
 	char *utf8res;
-	size_t inlen, outlen, convertedlen;
+	size_t inlen, outlen;
 	
 	int old_style_conv=0;
 	int skip_char=0;
@@ -877,7 +879,7 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 				memset( utf8buf, 0, outlen);
 				errno = 0;
 				utf8in = dvbtext;
-				convertedlen = iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
+				iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
 				utf8res = strdup(utf8buf);
 				
 				if ( utf8buf )
@@ -899,7 +901,7 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 			memset( utf8buf, 0, outlen);
 			errno = 0;
 			utf8in = dvbtext;
-			convertedlen = iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
+			iconv( code_desc, &utf8in, &inlen, &utf8out, &outlen);
 			utf8res = strdup(utf8buf);
 			if ( utf8buf )
 				free(utf8buf);
@@ -914,7 +916,6 @@ char * dvbtext2utf8(char* dvbtext, int dvbtextlen)
 static void parse_service_descriptor (const unsigned char *buf, struct service *s)
 {
 	unsigned char len;
-	unsigned char *src, *dest;
 	char* dvbtext;
 
 	//	s->type = buf[2];
@@ -1707,6 +1708,11 @@ static int parse_section(struct section_buf *sb, unsigned char *buf)
 			parse_psip_vct(sb, buf, section_length, table_id, table_id_ext);
 			break;
 
+		case TID_BAT:
+			verbose("BAT bouquet_id: %d (0x%04X)\n", table_id_ext, table_id_ext);
+			bouquet_parse_bat(bouquets, buf, section_length, table_id_ext, section_version_number);
+			break;
+
 		default:
 			break;
 		};
@@ -1744,8 +1750,11 @@ static int read_sections (struct section_buf *sb)
 	/* the section filter API guarantess that we get one full section
 	* per read(), provided that the buffer is large enough (it is)
 	*/
-	if (((count = read (sb->fd, buffer, sizeof(buffer))) < 0) && errno == EOVERFLOW)
+	int overflow = 0;
+	if (((count = read (sb->fd, buffer, sizeof(buffer))) < 0) && errno == EOVERFLOW) {
+		overflow = 1;
 		count = read (sb->fd, buffer, sizeof(buffer));
+	}
 	if (count < 0) {
 		errorn("read_sections: read error");
 		return -1;
@@ -1767,6 +1776,7 @@ static int read_sections (struct section_buf *sb)
 		return -1;
 	}
 
+	debug("read() %d bytes from fd=%d, overflow=%d\n", count, sb->fd, overflow);
 	int i;
 	for(i=0; i<count; i++) {
 		debug("0x%02X ", buffer[i]);
@@ -1965,7 +1975,6 @@ static void read_filters (void)
 
 static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 {
-	int rc;
 	int i;
 	fe_status_t s;
 	uint16_t strength, snr;
@@ -2010,6 +2019,12 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 				if (t->frequency >= lnb_type.switch_val)
 					hiband = 1;
 
+				setup_switch (frontend_fd,
+					switch_pos,
+					(t->polarisation == POLARISATION_VERTICAL || t->polarisation == POLARISATION_CIRCULAR_RIGHT)? 0 : 1,
+					hiband,
+					uncommitted_switch_pos);
+
 				usleep(50000);
 
 				if (hiband)
@@ -2018,7 +2033,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 					if_freq = abs(t->frequency - lnb_type.low_val);
 			} else {
 				/* C-Band Multipoint LNBf */
-				if_freq = abs(t->frequency - (t->polarisation == POLARISATION_VERTICAL ? 
+				if_freq = abs(t->frequency - ((t->polarisation == POLARISATION_VERTICAL || t->polarisation == POLARISATION_CIRCULAR_RIGHT)? 
 					lnb_type.low_val: lnb_type.high_val));
 			}
 		} else	{
@@ -2042,7 +2057,7 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			err = rotate_rotor(	frontend_fd,
 						curr_rotor_pos, 
 						rotor_pos,
-						t->polarisation == POLARISATION_VERTICAL ? 0 : 1,
+						(t->polarisation == POLARISATION_VERTICAL || t->polarisation == POLARISATION_CIRCULAR_RIGHT)? 0 : 1,
 						hiband);
 			if (err)
 				error("Error in rotate_rotor err=%i\n",err); 
@@ -2105,6 +2120,9 @@ static int __tune_to_transponder (int frontend_fd, struct transponder *t)
 			dprintf(1,"ATSC frequency is %d\n", if_freq);
 		}
 		break;
+
+	default:
+		return -1;
 	}
 
 	struct dvb_frontend_event ev;
@@ -2612,7 +2630,6 @@ static int tune_initial (int frontend_fd, const char *initial)
 	char buf[1024];
 	char pol[20], fec[20], qam[20], bw[20], fec2[20], mode[20], guard[20], hier[20], rolloff[20], scan_mode;
 	struct transponder *t;
-	struct transponder *t2;
 	int scan_mode1 = FALSE;
 	int scan_mode2 = FALSE;
 	int stream_id, pls_code, pls_mode;
@@ -2741,11 +2758,19 @@ static int tune_initial (int frontend_fd, const char *initial)
 							switch(pol[0]) 
 							{
 							case 'H':
-							case 'L':
 								t->polarisation = POLARISATION_HORIZONTAL;
 								break;
+							case 'V':
+								t->polarisation = POLARISATION_VERTICAL;
+								break;
+							case 'L':
+								t->polarisation = POLARISATION_CIRCULAR_LEFT;
+								break;
+							case 'R':
+								t->polarisation = POLARISATION_CIRCULAR_RIGHT;
+								break;
 							default:
-								t->polarisation = POLARISATION_VERTICAL;;
+								t->polarisation = POLARISATION_VERTICAL;
 								break;
 							}
 							t->inversion = spectral_inversion;
@@ -2898,6 +2923,7 @@ static void scan_tp_dvb (void)
 	struct section_buf s1;
 	struct section_buf s2;
 	struct section_buf s3;
+	struct section_buf s4;
 
 	/**
 	*  filter timeouts > min repetition rates specified in ETR211
@@ -2919,6 +2945,11 @@ static void scan_tp_dvb (void)
 			setup_filter (&s3, demux_devname, PID_NIT_ST, TID_NIT_OTHER, -1, 1, 1, 15);
 			add_filter (&s3);
 		}
+	}
+
+	if (use_bouquets) {
+		setup_filter (&s4, demux_devname, PID_SDT_BAT_ST, TID_BAT, -1, 1, 1, 15);
+		add_filter (&s4);
 	}
 
 	do {
@@ -2990,13 +3021,35 @@ static int sat_number (struct transponder *t)
 	return switch_pos + uncommitted_switch_pos*4;
 }
 
+static void dump_service(struct transponder *t, struct service *s)
+{
+	switch (output_format)
+	{
+	case OUTPUT_VDR:
+		vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
+		break;
+
+	case OUTPUT_VDR_16x:
+		if(t->delivery_system != SYS_DVBS2) {
+			vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
+		}
+		break;
+
+	case OUTPUT_ZAP:
+		zap_dump_service_parameter_set (stdout, s, t, sat_number(t));
+		break;
+
+	default:
+		break;
+	}
+}
+
 static void dump_lists (void)
 {
 	struct list_head *p1, *p2;
 	struct transponder *t;
 	struct service *s;
 	int n = 0, i;
-	int cnt = 1;
 	char sn[20];
 	int anon_services = 0;
 
@@ -3081,8 +3134,15 @@ static void dump_lists (void)
 			default:
 				break;
 			}
+
+			if (!use_bouquets)
+				dump_service(t, s);
 		}
 	}
+
+	if (use_bouquets)
+		bouquet_dump(bouquets, &scanned_transponders, ca_select, serv_select, dump_service);
+
 	info("Done.\n");
 }
 
@@ -3168,7 +3228,10 @@ static const char *usage = "\n"
 "		s=S2  Disable DVB-S2 scan (good for owners of cards that do not\n"
 "		      support DVB-S2 systems)\n"
 "	-X	Disable AUTOs for initial transponders (esp. for hardware which\n"
-"		not support it). Instead try each value of any free parameters.\n";
+"		not support it). Instead try each value of any free parameters.\n"
+"	-B opts	Parse BAT and create channel groups for VDR output.\n"
+"		Use -B help for options.\n"
+"	-b	The same as -B, default options.\n";
 
 
 void bad_usage(char *pname, int problem)
@@ -3222,11 +3285,25 @@ int main (int argc, char **argv)
 
 	/* start with default lnb type */
 	lnb_type = *lnb_enum(0);
-	while ((opt = getopt(argc, argv, "5cnMXpa:f:d:O:k:I:S:s:r:R:H:o:D:x:t:i:l:vquPA:U")) != -1) {
+	while ((opt = getopt(argc, argv, "5cnMXpa:f:d:O:k:I:S:s:r:R:H:o:D:x:t:i:l:vquPA:UbB:")) != -1) {
 		switch (opt) 
 		{
 		case 'a':
 			adapter = strtoul(optarg, NULL, 0);
+			break;
+
+		case 'b':
+		case 'B':
+			if (opt == 'B' && optarg && strcmp(optarg, "help") == 0) {
+				fprintf(stderr, "%s", bouquet_help_msg());
+				return -1;
+			}
+			if (!use_bouquets) {
+				bouquets = bouquet_create((opt == 'B')? optarg : "");
+				if (!bouquets)
+					return -1;
+				use_bouquets = 1;
+			}
 			break;
 
 		case 'c':
@@ -3376,6 +3453,11 @@ int main (int argc, char **argv)
 		};
 	}
 
+	if (use_bouquets && !(output_format == OUTPUT_VDR || output_format == OUTPUT_VDR_16x)) {
+		fprintf(stderr, "Bouquets require a VDR output format.\n");
+		return -1;
+	}
+
 	if (optind < argc)
 		initial = argv[optind];
 	if ((!initial && !current_tp_only) || (initial && current_tp_only) ||
@@ -3446,7 +3528,7 @@ int main (int argc, char **argv)
 		/* query for currently tuned parameters */
 		if ((ioctl(frontend_fd, FE_GET_PROPERTY, &cmdseq)) == -1) {
 			perror("FE_GET_PROPERTY failed");
-			return -1;
+			return 1;
 		}
 		current_tp = alloc_transponder(p[0].u.data);
 		current_tp->delivery_system = p[1].u.data;
@@ -3481,6 +3563,9 @@ int main (int argc, char **argv)
 	close (frontend_fd);
 
 	dump_lists ();
+
+	if (bouquets)
+		bouquet_free(bouquets);
 
 	return 0;
 }

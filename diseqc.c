@@ -2,10 +2,13 @@
 #include <sys/ioctl.h>
 #include <time.h>
 #include <unistd.h>
+#include <math.h>
 
 #include <linux/dvb/frontend.h>
 #include "diseqc.h"
 #include "scan.h"
+
+extern float rotor_angle(int nn);
 
 struct diseqc_cmd committed_switch_cmds[] = {
 	{ { { 0xe0, 0x10, 0x38, 0xf0, 0x00, 0x00 }, 4 }, 20 },
@@ -92,7 +95,7 @@ int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int vol
 	float rotor_wait_time; //seconds
 	int err=0;
 
-	float speed_13V = 1.5; //degrees per second
+	//float speed_13V = 1.5; //degrees per second
 	float speed_18V = 2.4; //degrees per second
 	float degreesmoved,a1,a2;
 
@@ -104,17 +107,17 @@ int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int vol
 			} else {
 				a1 = rotor_angle(to_rotor_pos);
 				a2 = rotor_angle(from_rotor_pos);
-				degreesmoved = abs(a1-a2);
+				degreesmoved = fabsf(a1-a2);
 				if (degreesmoved>180) degreesmoved=360-degreesmoved;
 				rotor_wait_time = degreesmoved / speed_18V;
 			}
 
 			//switch tone off
-			if (err = ioctl(frontend_fd, FE_SET_TONE, SEC_TONE_OFF))
+			if ((err = ioctl(frontend_fd, FE_SET_TONE, SEC_TONE_OFF)) != 0)
 				return err;
 			msleep(15);
 			// high voltage for high speed rotation
-			if (err = ioctl(frontend_fd, FE_SET_VOLTAGE, SEC_VOLTAGE_18))
+			if ((err = ioctl(frontend_fd, FE_SET_VOLTAGE, SEC_VOLTAGE_18)) != 0)
 				return err;
 			msleep(15);
 			err = rotor_command(frontend_fd, 9, to_rotor_pos, 0, 0);
@@ -135,10 +138,10 @@ int rotate_rotor (int frontend_fd, int from_rotor_pos, int to_rotor_pos, int vol
 		}
 
 		// correct tone and voltage
-		if (err = ioctl(frontend_fd, FE_SET_TONE, hiband ? SEC_TONE_ON : SEC_TONE_OFF))
+		if ((err = ioctl(frontend_fd, FE_SET_TONE, hiband ? SEC_TONE_ON : SEC_TONE_OFF)) != 0)
                         return err;
 		msleep(15);
-		if (err = ioctl(frontend_fd, FE_SET_VOLTAGE, voltage_18))
+		if ((err = ioctl(frontend_fd, FE_SET_VOLTAGE, voltage_18)) != 0)
 			return err;
 		msleep(15);
 	}

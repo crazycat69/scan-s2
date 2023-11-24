@@ -79,7 +79,13 @@ static const char *west_east_flag_name [] = {
 
 static char sat_polarisation(transponder_t *t)
 {
-	return t->polarisation == POLARISATION_VERTICAL ? 'V' : 'H';
+	switch (t->polarisation) {
+		case POLARISATION_VERTICAL: return 'V';
+		case POLARISATION_HORIZONTAL: return 'H';
+		case POLARISATION_CIRCULAR_RIGHT: return 'R';
+		case POLARISATION_CIRCULAR_LEFT: return 'L';
+		default: return 'U';
+	}
 }
 
 extern enum format output_format;
@@ -104,6 +110,7 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 			case FEC_7_8: fprintf (f, "C78"); break;
 			case FEC_8_9: fprintf (f, "C89"); break;
 			case FEC_9_10: fprintf (f, "C910"); break;
+			default: break;
 			}
 
 			if(output_format != OUTPUT_VDR_16x) {
@@ -121,6 +128,7 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 				case APSK_16: fprintf(f, "M6"); break;
 				case APSK_32: fprintf(f, "M7"); break;
 				//case DQPSK: ???
+				default: break;
 				}
 
 				switch(t->rolloff) 
@@ -182,11 +190,8 @@ void vdr_dump_dvb_parameters (FILE *f, transponder_t *t, char *orbital_pos_overr
 			fprintf (f, "M%s", qam_name[t->modulation]);
 			fprintf (f, "T%s", mode_name[t->transmission_mode]);
 			fprintf (f, "G%s", guard_name[t->guard_interval]);
-			if(t->delivery_system == SYS_DVBT2)
-			{
-				fprintf (f, "S1");
-				fprintf (f, "P%i", t->stream_id);
-			}
+			fprintf (f, "S1");
+			fprintf (f, "P%i", t->stream_id);
 			fprintf (f, ":T:27500:");
 			break;
 

@@ -1,3 +1,4 @@
+// dump_service
 /*
 *  Simple MPEG parser to achieve network/service information.
 *
@@ -3039,6 +3040,10 @@ static void dump_service(struct transponder *t, struct service *s)
 		zap_dump_service_parameter_set (stdout, s, t, sat_number(t));
 		break;
 
+	case OUTPUT_M3U:
+		m3u_dump_service_parameter_set (stdout, s, t, url);
+		break;
+
 	default:
 		break;
 	}
@@ -3110,30 +3115,6 @@ static void dump_lists (void)
 
 			if(s->audio_pid[0] == 0 && s->ac3_pid != 0)
 				s->audio_pid[0] = s->ac3_pid;
-
-			switch (output_format)
-			{
-			case OUTPUT_VDR:
-				vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
-				break;
-
-			case OUTPUT_VDR_16x:
-				if(t->delivery_system != SYS_DVBS2) {
-					vdr_dump_service_parameter_set(stdout, s, t, override_orbital_pos, vdr_dump_channum, vdr_dump_provider, ca_select);
-				}
-				break;
-
-			case OUTPUT_ZAP:
-				zap_dump_service_parameter_set (stdout, s, t, sat_number(t));
-				break;
-
-			case OUTPUT_M3U:
-				m3u_dump_service_parameter_set (stdout, s, t, url);
-				break;
-
-			default:
-				break;
-			}
 
 			if (!use_bouquets)
 				dump_service(t, s);

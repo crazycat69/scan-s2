@@ -136,6 +136,9 @@ usage: scan-s2 [options...] [-c | initial-tuning-data-file]
 		      support DVB-S2 systems)
 	-X	Disable AUTOs for initial transponders (esp. for hardware which
 		not support it). Instead try each value of any free parameters.
+	-B opts	Parse BAT and create channel groups for VDR output.
+		Use -B help for options.
+	-b	The same as -B, default options.
 
 
 Example of command line:

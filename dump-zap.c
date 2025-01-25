@@ -63,8 +63,15 @@ static const char *hierarchy_name [] = {
 
 static char sat_polarisation(transponder_t *t)
 {
-	return t->polarisation == POLARISATION_VERTICAL ? 'v' : 'h';
+	switch (t->polarisation) {
+		case POLARISATION_VERTICAL: return 'V';
+		case POLARISATION_HORIZONTAL: return 'H';
+		case POLARISATION_CIRCULAR_RIGHT: return 'R';
+		case POLARISATION_CIRCULAR_LEFT: return 'L';
+		default: return 'U';
+	}
 }
+
 
 void zap_dump_dvb_parameters (FILE *f, transponder_t *t, int sat_number)
 {
